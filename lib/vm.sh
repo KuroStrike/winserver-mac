@@ -41,7 +41,7 @@ save_vm() {
 vm_running() { be running; }
 
 need_name() {
-  [ -n "${1:-}" ] && [ "${1#-}" = "$1" ] || die "missing VM name"
+  if [ -z "${1:-}" ] || [ "${1#-}" != "$1" ]; then die "missing VM name"; fi
 }
 
 valid_vm_name() {
