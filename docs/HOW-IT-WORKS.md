@@ -144,7 +144,18 @@ WinRM, installs `--feature`s, and either:
   A scheduled task is used instead of a `RunOnce` key because `RunOnce` is not processed on Server Core.
 
 `post-setup.ps1` runs your `--script`, installs your SSH key into `administrators_authorized_keys`, makes PowerShell the
-SSH shell, and **starts sshd last**. It then clears the automatic logon and deletes `settings.ps1`.
+SSH shell, and **starts sshd last**. It then clears the automatic logon and deletes `settings.ps1`. On a domain
+controller it first waits for Active Directory Web Services, points the domain's clock at `time.windows.com` (the first
+DC of a forest otherwise trusts only its own clock), and sets sshd to *delayed* start, so that after a reboot sshd
+answers only once the DC can log users on.
+
+### The clock
+
+Windows reads the hardware clock as local time, in its own time zone. QEMU has no guest tools to fix the time later,
+so a QEMU VM gets a UTC hardware clock (`-rtc base=utc`) and the answer file sets `RealTimeIsUniversal` during the
+*specialize* pass: the guest's time zone (`--timezone`) and the Mac's no longer matter. VMware Tools, Parallels Tools
+and the VirtualBox Guest Additions keep the time on their own. (VMs created by 0.1.0 keep `-rtc base=localtime`, which
+is only right when the guest's time zone is the Mac's.)
 
 On the Mac, `winserver wait` opens a TCP connection to the SSH port every 15 seconds (the forwarded port on
 127.0.0.1 for QEMU and VirtualBox, the VM's own IP as reported by guest tools for VMware and Parallels) and reads 4 bytes. QEMU

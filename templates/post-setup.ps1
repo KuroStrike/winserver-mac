@@ -23,6 +23,12 @@ if ($WS_Role -eq 'ad-dc') {
     }
     if ($ready) { Set-ADUser -Identity Administrator -PasswordNeverExpires $true }
     else { Write-Warning 'Active Directory did not come up within 15 minutes' }
+
+    # The first DC of a forest is the domain's time source, and by default it
+    # trusts only its own clock. Sync it from the internet instead.
+    Step 'Syncing the domain clock with time.windows.com'
+    w32tm.exe /config /manualpeerlist:time.windows.com,0x8 /syncfromflags:manual /reliable:yes /update | Out-Null
+    Restart-Service -Name w32time
 }
 
 $custom = Join-Path $dst 'custom.ps1'
@@ -60,6 +66,11 @@ if ($sshRule) {
         -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
 }
 Set-Service -Name sshd -StartupType Automatic
+if ($WS_Role -eq 'ad-dc') {
+    # After a reboot, a DC accepts SSH connections before it can log anyone on,
+    # and `winserver wait` would report it ready too early. Start sshd later.
+    sc.exe config sshd start= delayed-auto | Out-Null
+}
 Start-Service -Name sshd
 
 Step 'Cleaning up'

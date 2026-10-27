@@ -77,7 +77,9 @@ build_qemu_args() {
     -qmp "unix:$(qemu_escape "$(qmp_socket "$NAME")"),server,nowait"
     -smp "$CPUS"
     -m "$MEMORY"
-    -rtc base=localtime
+    # utc for VMs whose answer file sets RealTimeIsUniversal, so the guest's
+    # time zone doesn't matter; VMs from 0.1.0 keep the Mac's local time.
+    -rtc "base=${RTC:-localtime}"
   )
 
   case "$ARCH" in

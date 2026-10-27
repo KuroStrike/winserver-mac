@@ -7,7 +7,7 @@ BACKENDS="qemu vmware parallels virtualbox manual"
 
 # Everything stored in vm.conf. load_vm/save_vm round-trip exactly these keys.
 VM_KEYS="NAME BACKEND ARCH ISO BOOT_ISO TOOLS_ISO IMAGE_INDEX EDITION EXPERIENCE CPUS MEMORY DISK_SIZE
-HOSTNAME_WIN UI_LANG LOCALE KEYBOARD TIMEZONE PRODUCT_KEY ROLE DOMAIN NETBIOS FEATURES NIC MAC CPU_MODEL
+HOSTNAME_WIN UI_LANG LOCALE KEYBOARD TIMEZONE PRODUCT_KEY ROLE DOMAIN NETBIOS FEATURES NIC MAC CPU_MODEL RTC
 RDP_PORT SSH_PORT WINRM_PORT VNC_PORT INSTALLED CREATED"
 
 # Call the loaded VM's backend: be start gui 0  ->  be_qemu_start gui 0
@@ -282,6 +282,9 @@ or use --backend manual and 'winserver iso' to get media for any hypervisor."
   HOSTNAME_WIN="$hostname"; UI_LANG="$lang"; LOCALE="$locale"; KEYBOARD="$keyboard"; TIMEZONE="$timezone"
   PRODUCT_KEY="$key"; FEATURES="$features"; NIC="$nic"; MAC="$(gen_mac)"; CPU_MODEL="$cpu_model"
   if [ -n "$domain" ]; then ROLE=ad-dc; DOMAIN="$domain"; NETBIOS="$netbios"; fi
+  # QEMU has no guest tools to set the clock: give it a UTC hardware clock, and
+  # the answer file tells Windows so. Other hypervisors' tools keep time.
+  if [ "$BACKEND" = qemu ]; then RTC=utc; fi
   # Separate ranges, so the four ports of one VM can never collide with each other.
   RDP_PORT="$(find_free_port 33890)"
   SSH_PORT="$(find_free_port 22220)"
@@ -324,7 +327,7 @@ or use --backend manual and 'winserver iso' to get media for any hypervisor."
   [ -z "$ROLE" ] || ok "Will become the first domain controller of $DOMAIN ($NETBIOS)"
   [ -z "$ssh_key" ] || dim "  SSH key: $ssh_key"
   if [ "$arch" = x64 ] && [ "$(host_arch)" = arm64 ]; then
-    warn "x64 Windows runs under full emulation on Apple Silicon: expect a 1-3 hour install and a slow desktop."
+    warn "x64 Windows runs under full emulation on Apple Silicon: the install takes 20-40 min with 8 vCPUs (longer with fewer, or with the desktop), and the desktop is slow."
   fi
 
   if [ "$no_start" = 0 ]; then
@@ -419,7 +422,7 @@ cmd_wait() {
 }
 
 cmd_stop() {
-  local name="" force=0 timeout=120 i=0 addr
+  local name="" force=0 timeout="" i=0 addr
   while [ $# -gt 0 ]; do
     case "$1" in
       --force|-f) force=1; shift ;;
@@ -432,6 +435,10 @@ cmd_stop() {
   need_name "$name"
   load_vm "$name"
   if ! vm_running; then ok "$NAME is not running"; return 0; fi
+  if [ -z "$timeout" ]; then
+    # An emulated shutdown takes 75-110 s on an M4 Pro.
+    if [ "$ARCH" = x64 ] && [ "$(host_arch)" = arm64 ]; then timeout=300; else timeout=120; fi
+  fi
 
   [ "$force" = 1 ] || info "Asking Windows to shut down…"
   be stop "$force"

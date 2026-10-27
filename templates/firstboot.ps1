@@ -149,10 +149,10 @@ if ($WS_Role -eq 'ad-dc') {
         -Principal $principal -Force | Out-Null
 
     $dsrm = ConvertTo-SecureString $WS_Password -AsPlainText -Force
-    Stop-Transcript | Out-Null
     # Reboots when it is done.
     Install-ADDSForest -DomainName $WS_Domain -DomainNetbiosName $WS_Netbios -InstallDns `
-        -SafeModeAdministratorPassword $dsrm -Force -WarningAction SilentlyContinue
+        -SafeModeAdministratorPassword $dsrm -Force -WarningAction SilentlyContinue | Out-Host
+    Stop-Transcript | Out-Null
     exit 0
 }
 

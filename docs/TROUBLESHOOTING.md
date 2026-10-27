@@ -58,8 +58,25 @@ needs the guest tools running to learn the VM's IP address (`winserver info <nam
 
 ## `winserver wait` never finishes (x64)
 
-Emulated installs take 1-3 hours on an M-series Mac, longer with Desktop Experience. `wait` gives up after 8 hours.
+On an M4 Pro with 8 vCPUs, an emulated Server Core install takes about 22 minutes, and a domain controller about
+37. Fewer cores, a slower Mac or Desktop Experience can make it several times longer. `wait` gives up after 8 hours.
 Watch progress in the VM window or with `--vnc`. Use `--core`, give it `--cpus 6` or more, and close other heavy apps.
+
+## The VM's clock is off by a few hours
+
+VMs created by winserver 0.1.0 on QEMU read the Mac's local time as their own, so their clock is off by the difference
+between the two time zones after each `start` (a domain controller never corrects it). Recreate the VM with 0.1.1 or
+later, or set the guest's time zone to the Mac's: `Set-TimeZone -Id "<your zone>"` in `winserver ssh <name>`.
+
+## `dcdiag` reports DFSREvent and SystemLog on a new domain controller
+
+Expected for the first 24 hours: these tests flag every error event since SYSVOL was shared, including the ones a new
+DC logs while it promotes itself and boots for the first time (Group Policy can't read SYSVOL yet, and so on).
+
+## `winserver stop` says the VM is still running
+
+An emulated shutdown takes one to two minutes; `stop` waits up to 5 minutes for those, and tries `Stop-Computer` over
+SSH halfway through. Run it again, give it `--timeout 600`, or use `--force` (a hard power-off) if Windows is stuck.
 
 ## "This version of Windows has expired" / restarts every hour
 

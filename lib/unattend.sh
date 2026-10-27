@@ -73,7 +73,7 @@ copy_virtio_drivers() {
 # Write the config payload for the loaded VM (see load_vm) into directory $1:
 # answer file, first-boot scripts, settings, drivers, SSH key, custom script.
 stage_config() {
-  local stage="$1" arch_tag drivers="" key="" pw feature features=""
+  local stage="$1" arch_tag drivers="" key="" specialize="" pw feature features=""
   pw="$(cat "$VM_DIR/password")"
   case "$ARCH" in arm64) arch_tag=arm64 ;; *) arch_tag=amd64 ;; esac
 
@@ -83,6 +83,20 @@ stage_config() {
   fi
   if [ -n "${PRODUCT_KEY:-}" ]; then
     key="        <ProductKey><Key>$(xml_escape "$PRODUCT_KEY")</Key><WillShowUI>OnError</WillShowUI></ProductKey>"
+  fi
+  # Windows reads the hardware clock as local time unless told otherwise. Set in
+  # specialize, it is in effect from the reboot that follows.
+  if [ "${RTC:-}" = utc ]; then
+    specialize="$(printf '%s\n' \
+      "    <component name=\"Microsoft-Windows-Deployment\" processorArchitecture=\"$arch_tag\" publicKeyToken=\"31bf3856ad364e35\" language=\"neutral\" versionScope=\"nonSxS\">" \
+      '      <RunSynchronous>' \
+      '        <RunSynchronousCommand wcm:action="add">' \
+      '          <Order>1</Order>' \
+      '          <Description>Hardware clock is UTC</Description>' \
+      '          <Path>reg.exe add HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation /v RealTimeIsUniversal /t REG_DWORD /d 1 /f</Path>' \
+      '        </RunSynchronousCommand>' \
+      '      </RunSynchronous>' \
+      '    </component>')"
   fi
 
   render_template "$WINSERVER_ROOT/templates/autounattend.xml" \
@@ -98,6 +112,7 @@ stage_config() {
     WS_AUTOLOGON_PASSWORD="$(unattend_password "$pw" Password)" \
     WS_DRIVER_PATHS="$drivers" \
     WS_PRODUCT_KEY="$key" \
+    WS_SPECIALIZE_EXTRA="$specialize" \
     >"$stage/autounattend.xml" || die "could not render autounattend.xml"
   if has xmllint; then
     xmllint --noout "$stage/autounattend.xml" || die "generated autounattend.xml is not valid XML"

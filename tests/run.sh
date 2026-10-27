@@ -10,10 +10,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WS="$ROOT/bin/winserver"
 T="$(mktemp -d "${TMPDIR:-/tmp}/winserver-test.XXXXXX")"
-trap 'pkill -f "winserver-test.*qemu-system" 2>/dev/null || true; rm -rf "$T"' EXIT
-
 export NO_COLOR=1
 export WINSERVER_HOME="$T/home"
+# Where winserver puts this home's QEMU sockets (see RUN_DIR in lib/common.sh).
+RUN="/tmp/winserver-$(id -u)-$(printf '%s' "$WINSERVER_HOME" | cksum | cut -d' ' -f1)"
+trap 'pkill -f "winserver-test.*qemu-system" 2>/dev/null || true; rm -rf "$T" "$RUN"' EXIT
 export WINSERVER_QEMU_DIR="$T/qemu/bin"
 export WINSERVER_QEMU_SHARE="$T/qemu/share"
 export WINSERVER_PRESS_SECONDS=1
@@ -169,6 +170,8 @@ check "answer file targets arm64"      contains "$XML" 'processorArchitecture="a
 check "answer file installs image 4"   contains "$XML" "<Value>4</Value>"
 check "answer file sets the hostname"  contains "$XML" "<ComputerName>WEB01</ComputerName>"
 check "answer file has driver paths"   contains "$XML" 'D:\\drivers'
+check "QEMU VM gets a UTC clock"       contains "$CONF" "^RTC=utc"
+check "  ...and Windows is told so"    contains "$XML" "RealTimeIsUniversal /t REG_DWORD /d 1"
 check "ARM64 drivers on the disc"      contains "$T/out-web01-drivers" "NetKVM/netkvm.inf"
 check "x64 drivers not on the disc"    fails grep -q amd64 "$T/out-web01-drivers"
 PW="$(cat "$WINSERVER_HOME/vms/web01/password")"
@@ -197,6 +200,9 @@ check "first boot copies all payload"  payload_listed
 check "no -Exclude copies in scripts"  fails grep -n -- "-Exclude" "$ROOT/templates/firstboot.ps1" "$ROOT/templates/post-setup.ps1"
 # Regression: Server 2025's own sshd rule is Private-only and VM networks are Public.
 check "sshd rule opened on all profiles" sh -c "grep -A2 'sshRule) {' '$ROOT/templates/post-setup.ps1' | grep -q 'Profile Any'"
+# Regression: a DC answered SSH before it could log anyone on, so `wait` returned too early.
+check "DC starts sshd delayed"         sh -c "grep -B3 'delayed-auto' '$ROOT/templates/post-setup.ps1' | grep -q \"WS_Role -eq 'ad-dc'\""
+check "DC syncs time from the internet" contains "$ROOT/templates/post-setup.ps1" "manualpeerlist:time.windows.com"
 
 echo; echo "create (QEMU, x64 domain controller, --iso)"
 check "create x64 DC"                  "$WS" create dc01 --iso "$T/server-x64.iso" --domain corp.lab --edition standard --no-start --no-ssh-key --locale en-GB --timezone "GMT Standard Time"
@@ -241,6 +247,7 @@ check "iso has the answer file"        xmllint --noout "$(iso_file "$T/ext01.iso
 check "iso has the Windows media"      test -s "$(iso_file "$T/ext01.iso" sources/install.wim all)"
 check "iso has the first-boot script"  test -s "$(iso_file "$T/ext01.iso" firstboot.ps1 all)"
 check "iso has its drivers"            contains "$T/out-all-drivers" "NetKVM/netkvm.inf"
+check "manual leaves the clock alone"  fails grep -q RealTimeIsUniversal "$(iso_file "$T/ext01.iso" autounattend.xml all)"
 
 echo; echo "QEMU: start / wait / stop"
 check "start headless"                 "$WS" start web01 --headless
@@ -251,6 +258,9 @@ QCMD="$WINSERVER_HOME/vms/web01/qemu.cmd"
 check "HVF on arm64"                   contains "$QCMD" "-accel hvf"
 check "prompt-free ISO attached"       contains "$QCMD" "noprompt/winserver-arm64-26501.1000-fr-fr.iso"
 check "NVMe boot disk"                 contains "$QCMD" "-device nvme"
+check "hardware clock in UTC"          contains "$QCMD" "-rtc base=utc"
+# Regression: test VMs shared ~/.winserver's socket folder and took over a real VM's sockets.
+check "sockets apart from ~/.winserver" contains "$QCMD" "unix:$RUN/web01.monitor"
 check "wait sees sshd"                 "$WS" wait web01 --timeout 2
 check "setup marked done"              contains "$WINSERVER_HOME/vms/web01/vm.conf" "^INSTALLED=1"
 check "stop"                           "$WS" stop web01 --timeout 10
@@ -268,6 +278,8 @@ check "  ...normal reboots restored"   contains "$QLOG" '"set-action".*"reboot":
 check "  ...VM reset and resumed"      sh -c "grep -q system_reset '$QLOG' && grep -q '\"cont\"' '$QLOG'"
 check "  ...restart keeps config disc" sh -c "'$WS' stop ej01 --force && '$WS' start ej01 --headless && grep -q config.iso '$WINSERVER_HOME/vms/ej01/qemu.cmd' && '$WS' stop ej01 --force"
 check "  ...but not the install disc"  fails grep -q "noprompt/winserver-arm64" "$WINSERVER_HOME/vms/ej01/qemu.cmd"
+# VMs made by 0.1.0 have no RTC key and an answer file without RealTimeIsUniversal.
+check "0.1.0 VMs keep local time"      sh -c "sed -i '' '/^RTC=/d' '$WINSERVER_HOME/vms/ej01/vm.conf' && '$WS' start ej01 --headless && grep -q -- '-rtc base=localtime' '$WINSERVER_HOME/vms/ej01/qemu.cmd' && '$WS' stop ej01 --force"
 check "without mkisofs: original ISO"  env WINSERVER_MKISOFS= "$WS" create key01 --no-start --no-ssh-key
 check "  ...and Enter at the prompt"   sh -c "'$WS' start key01 --headless && grep -q 'sendkey ret' '$WINSERVER_HOME/vms/key01/monitor.log' && '$WS' stop key01 --force"
 
@@ -280,6 +292,7 @@ check "UEFI without Secure Boot"       contains "$VMX" 'uefi.secureBoot.enabled 
 check "disk boots before the CD"       contains "$VMX" 'bios.bootOrder = "hdd,cdrom"'
 check "memory in MiB"                  contains "$VMX" 'memsize = "4096"'
 check "boots the prompt-free ISO"      contains "$VMX" 'sata0:0.fileName = ".*noprompt/winserver-arm64'
+check "clock left to VMware Tools"     fails grep -q RealTimeIsUniversal "$(config_file vm01 autounattend.xml)"
 check "config disc attached"           contains "$VMX" 'sata0:1.fileName = ".*config.iso"'
 check "VMware Tools attached"          contains "$VMX" 'sata0:2.fileName = ".*isoimages/arm64/windows.iso"'
 check "disk created"                   test -f "$WINSERVER_HOME/vms/vm01/vm01.vmwarevm/disk.vmdk"

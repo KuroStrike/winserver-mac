@@ -6,7 +6,11 @@ VMS_DIR="$WINSERVER_HOME/vms"
 CACHE_DIR="$WINSERVER_HOME/cache"
 ISO_DIR="$CACHE_DIR/iso"
 # UNIX sockets are limited to 104 bytes on macOS, so they live under a short path.
+# Another WINSERVER_HOME gets its own, or same-named VMs would share sockets.
 RUN_DIR="/tmp/winserver-$(id -u)"
+if [ "$WINSERVER_HOME" != "$HOME/.winserver" ]; then
+  RUN_DIR="$RUN_DIR-$(printf '%s' "$WINSERVER_HOME" | cksum | cut -d' ' -f1)"
+fi
 
 # ---------------------------------------------------------------- logging
 

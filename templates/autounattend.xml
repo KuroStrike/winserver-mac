@@ -111,6 +111,7 @@
     <component name="Microsoft-Windows-ServerManager-SvrMgrNc" processorArchitecture="@@ARCH@@" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <DoNotOpenServerManagerAtLogon>true</DoNotOpenServerManagerAtLogon>
     </component>
+@@SPECIALIZE_EXTRA@@
   </settings>
 
   <settings pass="oobeSystem">
