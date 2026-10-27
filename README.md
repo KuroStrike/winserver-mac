@@ -46,18 +46,25 @@ On an Intel Mac, every backend runs x64 Windows Server at full speed. Details pe
 ## Install
 
 ```bash
-git clone https://github.com/KuroStrike/winserver-mac.git
-cd winserver-mac
-make install              # links bin/winserver into ~/.local/bin (PREFIX=... to change)
-winserver doctor          # shows what's installed and what's missing
+brew install kurostrike/tap/winserver   # also installs wimlib and cdrtools
+winserver doctor                        # shows what's installed and what's missing
 ```
 
-Requirements: macOS 13+, [Homebrew](https://brew.sh), 8 GB+ RAM (16 GB recommended), ~40 GB free disk, and
+Requirements: macOS 13+, [Homebrew](https://brew.sh), 8 GB+ RAM (16 GB recommended), ~40 GB free disk. Then add
+what your setup needs:
 
 ```bash
-brew install wimlib cdrtools      # read ISOs, build prompt-free and all-in-one ISOs
 brew install qemu                 # for the QEMU backend (skip it if you use VMware, Parallels or VirtualBox)
 brew install aria2 cabextract     # only for 'winserver fetch arm64'
+```
+
+Or install from a clone, which tracks `main` (`git pull` updates the command):
+
+```bash
+git clone https://github.com/KuroStrike/winserver-mac.git
+cd winserver-mac
+make install                      # links bin/winserver into ~/.local/bin (PREFIX=... to change)
+brew install wimlib cdrtools      # read ISOs, build prompt-free and all-in-one ISOs
 ```
 
 For `winserver rdp`, install Microsoft's [Windows App](https://apps.apple.com/app/windows-app/id1295203466).
