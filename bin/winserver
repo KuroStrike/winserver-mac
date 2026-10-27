@@ -9,7 +9,7 @@
 # no ${var,,}, and empty arrays are expanded with ${a[@]+"${a[@]}"}.
 set -euo pipefail
 
-WINSERVER_VERSION="0.1.1"
+WINSERVER_VERSION="0.1.2"
 
 # Resolve the real location of this script, following symlinks
 # (Homebrew and `make install` link bin/winserver into a bin directory).

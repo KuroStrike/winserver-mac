@@ -80,6 +80,9 @@ Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value '0'
 Remove-ItemProperty -Path $winlogon -Name DefaultPassword -ErrorAction SilentlyContinue
 # settings.ps1 may hold the password (domain controllers); it is no longer needed.
 Remove-Item -Path (Join-Path $dst 'settings.ps1') -Force -ErrorAction SilentlyContinue
+# Setup keeps a copy of the answer file with the Administrator password, merely
+# base64-encoded and readable by every local user.
+Remove-Item -Path (Join-Path $env:WINDIR 'Panther\unattend-original.xml') -Force -ErrorAction SilentlyContinue
 Set-Content -Path (Join-Path $dst 'done') -Value (Get-Date -Format o)
 
 Step 'Done. This server is ready.'

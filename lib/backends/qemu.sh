@@ -148,7 +148,15 @@ build_qemu_args() {
     headless) QEMU_ARGS+=(-display none -daemonize) ;;
   esac
   if [ "$vnc" = 1 ]; then
-    QEMU_ARGS+=(-vnc "127.0.0.1:$((VNC_PORT - 5900))")
+    # With a password, or any local user could type into the console.
+    # VNC passwords are 8 characters at most; QEMU reads the file as is.
+    if [ ! -s "$VM_DIR/vncpassword" ]; then
+      ( umask 077; printf '%s' "$(rand_str 8)" >"$VM_DIR/vncpassword" )
+    fi
+    QEMU_ARGS+=(
+      -object "secret,id=vncpw,file=$(qemu_escape "$VM_DIR/vncpassword")"
+      -vnc "127.0.0.1:$((VNC_PORT - 5900)),password-secret=vncpw"
+    )
   fi
 }
 

@@ -11,6 +11,8 @@ $ProgressPreference = 'SilentlyContinue'
 $src = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dst = Join-Path $env:ProgramData 'winserver'
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
+# Administrators and SYSTEM only: settings.ps1 holds the password on a domain controller.
+icacls.exe $dst /inheritance:r /grant '*S-1-5-32-544:(OI)(CI)F' /grant '*S-1-5-18:(OI)(CI)F' | Out-Null
 Start-Transcript -Path (Join-Path $dst 'firstboot.log') -Append | Out-Null
 
 function Step([string]$Message) { Write-Host "[winserver] $Message" -ForegroundColor Cyan }

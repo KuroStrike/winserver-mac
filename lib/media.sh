@@ -55,7 +55,7 @@ print(r.get("error") or ("ok" if r.get("files") else "EMPTY_FILELIST"))
 
 cmd_builds() {
   local rows
-  info "Asking UUP dump which ARM64 Windows Server builds Microsoft serves…"
+  info "Asking UUP dump which ARM64 Windows Server builds it knows about…"
   rows="$(uup_server_builds)" || die "could not reach $UUP_API"
   [ -n "$rows" ] || die "no ARM64 Windows Server builds found"
   printf '%s%-38s  %-12s  %-10s  %s%s\n' "$C_BLD" "ID" "BUILD" "DATE" "TITLE" "$C_RST"
@@ -64,6 +64,7 @@ cmd_builds() {
   warn "ARM64 Windows Server is only published as Insider Preview builds. They are time-limited:"
   dim  "  each one stops working on a fixed date (check with 'winver' in the guest)."
   dim  "  Use them for labs and testing, not production. See docs/LICENSING.md."
+  dim  "  Microsoft stops serving a build once it expires: 'winserver fetch arm64' picks the newest one still served."
 }
 
 fetch_arm64() {

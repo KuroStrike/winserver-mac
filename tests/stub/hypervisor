@@ -30,6 +30,8 @@ case "$tool" in
       list) [ "${2:-}" = runningvms ] && cat "$state"/running/* 2>/dev/null ;;
     esac ;;
   prlctl)
+    # STUB_PRL_DOWN=1: Parallels installed but its service not running.
+    if [ -n "${STUB_PRL_DOWN:-}" ]; then echo "Login failed: Unable to connect to Parallels Service."; exit 1; fi
     case "${1:-}" in
       start) echo "$2" >"$state/running/$(key "$2")" ;;
       stop) rm -f "$state/running/$(key "$2")" ;;

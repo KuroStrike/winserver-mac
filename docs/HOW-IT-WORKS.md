@@ -144,7 +144,9 @@ WinRM, installs `--feature`s, and either:
   A scheduled task is used instead of a `RunOnce` key because `RunOnce` is not processed on Server Core.
 
 `post-setup.ps1` runs your `--script`, installs your SSH key into `administrators_authorized_keys`, makes PowerShell the
-SSH shell, and **starts sshd last**. It then clears the automatic logon and deletes `settings.ps1`. On a domain
+SSH shell, and **starts sshd last**. It then clears the automatic logon and deletes `settings.ps1` and the copy of the
+answer file Setup keeps in `C:\Windows\Panther` (`unattend-original.xml`, with the password). `C:\ProgramData\winserver`
+is created for administrators only, since the logon task runs the scripts in it with full rights. On a domain
 controller it first waits for Active Directory Web Services, points the domain's clock at `time.windows.com` (the first
 DC of a forest otherwise trusts only its own clock), and sets sshd to *delayed* start, so that after a reboot sshd
 answers only once the DC can log users on.

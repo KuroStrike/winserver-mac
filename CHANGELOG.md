@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.2 (2026-10-27)
+
+Security and polish, from a full audit of 0.1.1 on real installs.
+
+- Security: Windows Setup keeps a copy of the answer file, `C:\Windows\Panther\unattend-original.xml`, with the
+  Administrator password base64-encoded and readable by every local user (on a DC, that is the domain admin and DSRM
+  password). It is now deleted at the end of setup. **VMs set up by 0.1.0 or 0.1.1: delete it yourself**
+  (`winserver ssh <name> -- 'Remove-Item C:\Windows\Panther\unattend-original.xml'`).
+- Security: `C:\ProgramData\winserver` was readable and writable by local users while setup ran, including the
+  scripts that the logon task runs as Administrator. It is now limited to Administrators and SYSTEM.
+- Security: QEMU's VNC console (`--vnc`) had no password, so any local user could type into it. It now has its own
+  random password, which `winserver console` passes to Screen Sharing.
+- `--script examples/ad-lab-seed.ps1` (or just `--script ad-lab-seed.ps1`) works from any folder, so the README's
+  domain controller recipe works when winserver is installed with Homebrew.
+- `doctor` says when Parallels is installed but its service isn't running, instead of a green check.
+- `builds` no longer claims Microsoft still serves the builds it lists; `doctor` describes mkisofs correctly.
+- README: a Security section, and which cells of the compatibility table are proven on real installs.
+  An issue template for reports.
+
 ## 0.1.1 (2026-10-27)
 
 Domain controllers verified end to end under QEMU (about 37 minutes, with the `ad-lab-seed.ps1` example), and the

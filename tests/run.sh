@@ -148,6 +148,7 @@ echo; echo "doctor / help"
 check "help prints usage"              sh -c "'$WS' --help | grep -q 'in any hypervisor'"
 check "doctor runs"                    "$WS" doctor
 check "doctor lists the backends"      sh -c "'$WS' doctor | grep -q 'VMware Fusion'"
+check "doctor: Parallels service down" sh -c "STUB_PRL_DOWN=1 '$WS' doctor | grep -q \"service isn't running\""
 check "unknown command fails"          fails "$WS" frobnicate
 
 echo; echo "create (QEMU, arm64, from cache)"
@@ -203,6 +204,10 @@ check "sshd rule opened on all profiles" sh -c "grep -A2 'sshRule) {' '$ROOT/tem
 # Regression: a DC answered SSH before it could log anyone on, so `wait` returned too early.
 check "DC starts sshd delayed"         sh -c "grep -B3 'delayed-auto' '$ROOT/templates/post-setup.ps1' | grep -q \"WS_Role -eq 'ad-dc'\""
 check "DC syncs time from the internet" contains "$ROOT/templates/post-setup.ps1" "manualpeerlist:time.windows.com"
+# Regression: Setup's copy of the answer file kept the password, readable by every local user,
+# and C:\ProgramData\winserver (settings.ps1, the scripts the logon task runs) was user-writable.
+check "Setup's answer file copy removed" contains "$ROOT/templates/post-setup.ps1" "Panther\\\\unattend-original.xml"
+check "payload folder admins-only"     contains "$ROOT/templates/firstboot.ps1" "icacls.exe \$dst /inheritance:r"
 
 echo; echo "create (QEMU, x64 domain controller, --iso)"
 check "create x64 DC"                  "$WS" create dc01 --iso "$T/server-x64.iso" --domain corp.lab --edition standard --no-start --no-ssh-key --locale en-GB --timezone "GMT Standard Time"
@@ -235,6 +240,10 @@ check "rejects tiny memory"            fails "$WS" create small1 --memory 1G --n
 check "rejects unknown backend"        fails "$WS" create hv01 --backend hyperv --no-start
 check "rejects x64 on VMware (arm64)"  fails "$WS" create vx01 --iso "$T/server-x64.iso" --backend vmware --no-start
 check "rejects x64 on VirtualBox"      fails "$WS" create bx01 --iso "$T/server-x64.iso" --backend virtualbox --no-start
+check "rejects a missing --script"     fails "$WS" create scr00 --no-start --no-ssh-key --script nope.ps1
+# Installed with Homebrew there is no examples/ next to you: bundled scripts resolve from any folder.
+check "bundled --script from anywhere" sh -c "cd '$T' && '$WS' create scr01 --no-start --no-ssh-key --script examples/ad-lab-seed.ps1 && cmp -s '$ROOT/examples/ad-lab-seed.ps1' '$WINSERVER_HOME/vms/scr01/custom.ps1'"
+check "  ...or by its bare name"       sh -c "cd '$T' && '$WS' create scr02 --no-start --no-ssh-key --script ad-lab-seed.ps1 && cmp -s '$ROOT/examples/ad-lab-seed.ps1' '$WINSERVER_HOME/vms/scr02/custom.ps1'"
 
 echo; echo "manual backend + winserver iso"
 check "manual build"                   "$WS" create ext01 --backend manual
@@ -269,6 +278,9 @@ check "list shows it stopped"          sh -c "'$WS' list | grep -E '^web01 +qemu
 check "restart without install media"  "$WS" start web01 --headless
 check "media detached after install"   fails grep -q "26501.1000-fr-fr.iso" "$QCMD"
 check "stop --force"                   "$WS" stop web01 --force --timeout 10
+VNCPW="$WINSERVER_HOME/vms/web01/vncpassword"
+check "VNC console needs a password"   sh -c "'$WS' start web01 --headless --vnc && grep -q 'password-secret=vncpw' '$QCMD' && '$WS' stop web01 --force"
+check "  ...8 chars, private"          sh -c "[ \"\$(wc -c <'$VNCPW' | tr -d ' ')\" = 8 ] && [ \"\$(stat -f %Lp '$VNCPW')\" = 600 ]"
 check "x64 uses TCG"                   sh -c "'$WS' start dc01 --headless && grep -q -- '-accel tcg' '$WINSERVER_HOME/vms/dc01/qemu.cmd' && '$WS' stop dc01 --force"
 check "install run: reboot → pause"     contains "$WINSERVER_HOME/vms/dc01/qemu.cmd" "reboot=shutdown"
 check "first reboot ejects the disc"   sh -c "'$WS' create ej01 --no-start --no-ssh-key && STUB_GUEST_RESET=1 '$WS' start ej01 --headless && for i in 1 2 3 4 5 6 7 8 9 10; do [ -f '$WINSERVER_HOME/vms/ej01/.media-ejected' ] && break; sleep 0.5; done; [ -f '$WINSERVER_HOME/vms/ej01/.media-ejected' ]"

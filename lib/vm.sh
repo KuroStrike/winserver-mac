@@ -129,7 +129,8 @@ Roles
   --domain NAME          Promote to the first domain controller of a new forest (e.g. lab.local)
   --netbios NAME         NetBIOS domain name (default: first label of --domain, upper case)
   --feature A[,B]        Windows features to install (Install-WindowsFeature names); repeatable
-  --script FILE.ps1      Your own PowerShell, run at the end of setup (after domain promotion)
+  --script FILE.ps1      Your own PowerShell, run at the end of setup (after domain promotion).
+                         Bundled example, usable from any folder: --script ad-lab-seed.ps1
 
 Run
   --headless             No window; use RDP, SSH or --vnc
@@ -144,7 +145,7 @@ cmd_create() {
   local hostname="" password="" locale="" keyboard="" timezone="UTC"
   local ssh_key="" no_ssh_key=0 domain="" netbios="" features="" script=""
   local headless=0 vnc=0 no_start=0
-  local mnt iso_arch images lang k
+  local mnt iso_arch images lang k f
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -199,6 +200,12 @@ cmd_create() {
     printf '%s' "$domain" | grep -Eq '^[a-z0-9-]+(\.[a-z0-9-]+)+$' || die "--domain must look like lab.local"
     netbios="${netbios:-$(upper "${domain%%.*}" | cut -c1-15)}"
     [ "$netbios" != "$hostname" ] || die "the computer name and the NetBIOS domain name must differ (both are $hostname)"
+  fi
+  # Bundled examples work from any folder, e.g. --script examples/ad-lab-seed.ps1.
+  if [ -n "$script" ] && [ ! -f "$script" ]; then
+    for f in "$WINSERVER_ROOT/$script" "$WINSERVER_ROOT/examples/$script"; do
+      if [ -f "$f" ]; then script="$f"; break; fi
+    done
   fi
   [ -z "$script" ] || [ -f "$script" ] || die "--script: no such file $script"
 
@@ -576,7 +583,11 @@ cmd_console() {
   [ "$BACKEND" = qemu ] || die "use $(be describe)'s own window for the console"
   vm_running || die "'$NAME' is not running"
   port_in_use "$VNC_PORT" || die "no VNC console. Start the VM with: winserver start $NAME --vnc"
-  open "vnc://127.0.0.1:$VNC_PORT"
+  if [ -s "$VM_DIR/vncpassword" ]; then
+    open "vnc://:$(cat "$VM_DIR/vncpassword")@127.0.0.1:$VNC_PORT"
+  else
+    open "vnc://127.0.0.1:$VNC_PORT"    # started by winserver 0.1.1 or older
+  fi
 }
 
 cmd_password() {
@@ -632,7 +643,13 @@ cmd_doctor() {
     fi
   done
   for b in vmware parallels virtualbox; do
-    if "be_${b}_available"; then yes_ "$b" "$("be_${b}_describe")"; else dim "  - $b                 not installed"; fi
+    if ! "be_${b}_available"; then
+      dim "  - $b                 not installed"
+    elif [ "$b" = parallels ] && ! prl_ list >/dev/null 2>&1; then
+      meh_ "$b" "$(be_parallels_describe), but its service isn't running: open Parallels Desktop once"
+    else
+      yes_ "$b" "$("be_${b}_describe")"
+    fi
   done
   if [ "$(host_arch)" = arm64 ]; then
     dim "  On Apple Silicon only QEMU runs x64 Windows (emulated); all of them run ARM64 Windows."
@@ -640,7 +657,7 @@ cmd_doctor() {
 
   echo; echo "${C_BLD}Media tools${C_RST}"
   if has wimlib-imagex; then yes_ "wimlib" "reads editions from any ISO"; else meh_ "wimlib" "recommended"; missing="$missing wimlib"; fi
-  if has mkisofs || has genisoimage; then yes_ "mkisofs" "for 'winserver iso' and non-QEMU backends"; else meh_ "mkisofs" "needed for 'winserver iso' and VMware/Parallels/VirtualBox"; missing="$missing cdrtools"; fi
+  if has mkisofs || has genisoimage; then yes_ "mkisofs" "prompt-free install discs, 'winserver iso'"; else meh_ "mkisofs" "needed for prompt-free install discs (VMware, Parallels, VirtualBox) and 'winserver iso'"; missing="$missing cdrtools"; fi
   for c in aria2c cabextract; do
     if has "$c"; then yes_ "$c" "for 'fetch arm64'"; else meh_ "$c" "needed for 'fetch arm64'"; fi
   done
