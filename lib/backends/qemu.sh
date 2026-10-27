@@ -55,9 +55,10 @@ firmware_code() { case "$1" in arm64) echo edk2-aarch64-code.fd ;; x64) echo edk
 firmware_vars() { case "$1" in arm64) echo edk2-arm-vars.fd ;; x64) echo edk2-i386-vars.fd ;; esac; }
 
 monitor_socket() { echo "$RUN_DIR/$1.monitor"; }
+qmp_socket() { echo "$RUN_DIR/$1.qmp"; }
 
 # Fill QEMU_BIN and the QEMU_ARGS array for the loaded VM.
-#   $1  1 to attach the install media, 0 for a normal boot
+#   $1  2 = install disc + config disc, 1 = config disc only, 0 = no discs
 #   $2  gui | headless
 #   $3  1 to also expose a VNC console
 build_qemu_args() {
@@ -73,6 +74,7 @@ build_qemu_args() {
     -name "winserver-$NAME"
     -pidfile "$VM_DIR/qemu.pid"
     -monitor "unix:$(qemu_escape "$(monitor_socket "$NAME")"),server,nowait"
+    -qmp "unix:$(qemu_escape "$(qmp_socket "$NAME")"),server,nowait"
     -smp "$CPUS"
     -m "$MEMORY"
     -rtc base=localtime
@@ -106,22 +108,27 @@ build_qemu_args() {
     QEMU_ARGS+=(-device ramfb -device usb-kbd,bus=xhci.0)
   fi
 
-  if [ "$with_media" = 1 ]; then
+  if [ "$with_media" = 2 ]; then
+    # Setup's first reboot pauses the VM; qemu-eject-on-reboot.py then removes
+    # the install disc and resumes, so the prompt-free ISO never boots twice.
     QEMU_ARGS+=(
+      -action reboot=shutdown,shutdown=pause
       -drive "if=none,id=cd0,media=cdrom,readonly=on,file=$(qemu_escape "$BOOT_ISO")"
-      -drive "if=none,id=cd1,media=cdrom,readonly=on,file=$(qemu_escape "$VM_DIR/config.iso")"
     )
     if [ "$ARCH" = arm64 ]; then
       # The virt machine has no IDE/SATA; USB CD drives work with Windows' inbox drivers.
-      QEMU_ARGS+=(
-        -device usb-storage,drive=cd0,bus=xhci.0,bootindex=1
-        -device usb-storage,drive=cd1,bus=xhci.0
-      )
+      QEMU_ARGS+=(-device usb-storage,drive=cd0,bus=xhci.0,bootindex=1)
     else
-      QEMU_ARGS+=(
-        -device ide-cd,drive=cd0,bus=ide.0,bootindex=1
-        -device ide-cd,drive=cd1,bus=ide.1
-      )
+      QEMU_ARGS+=(-device ide-cd,drive=cd0,bus=ide.0,bootindex=1)
+    fi
+  fi
+  if [ "$with_media" -ge 1 ]; then
+    # The config disc stays until setup is done: the first logon runs from it.
+    QEMU_ARGS+=(-drive "if=none,id=cd1,media=cdrom,readonly=on,file=$(qemu_escape "$VM_DIR/config.iso")")
+    if [ "$ARCH" = arm64 ]; then
+      QEMU_ARGS+=(-device usb-storage,drive=cd1,bus=xhci.0)
+    else
+      QEMU_ARGS+=(-device ide-cd,drive=cd1,bus=ide.1)
     fi
   fi
 
@@ -206,12 +213,16 @@ be_qemu_running() { qemu_pid >/dev/null; }
 be_qemu_start() {
   local display="$1" vnc="$2" press="${3:-0}" with_media=0 pid i
   if [ "$INSTALLED" != 1 ]; then
-    with_media=1
-    # The original ISO prompts "Press any key to boot from CD" on the very first boot.
-    if [ "$BOOT_ISO" = "$ISO" ] && [ ! -f "$VM_DIR/.booted" ]; then press=1; fi
+    if [ -f "$VM_DIR/.media-ejected" ]; then
+      with_media=1          # past Setup's first reboot: only the config disc is still needed
+    else
+      with_media=2
+      # The original ISO prompts "Press any key to boot from CD" on the very first boot.
+      if [ "$BOOT_ISO" = "$ISO" ] && [ ! -f "$VM_DIR/.booted" ]; then press=1; fi
+    fi
   fi
   mkdir -p "$RUN_DIR"
-  rm -f "$(monitor_socket "$NAME")" "$VM_DIR/qemu.pid"
+  rm -f "$(monitor_socket "$NAME")" "$(qmp_socket "$NAME")" "$VM_DIR/qemu.pid"
   build_qemu_args "$with_media" "$display" "$vnc"
   printf '%q ' "$QEMU_BIN" "${QEMU_ARGS[@]}" >"$VM_DIR/qemu.cmd"
 
@@ -232,6 +243,10 @@ be_qemu_start() {
   done
   ok "Running (pid $pid)"
   if [ "$vnc" = 1 ]; then dim "  VNC console: winserver console $NAME"; fi
+  if [ "$with_media" = 2 ]; then
+    nohup python3 -I "$WINSERVER_ROOT/lib/backends/qemu-eject-on-reboot.py" \
+      "$(qmp_socket "$NAME")" cd0 "$VM_DIR/.media-ejected" >>"$VM_DIR/eject.log" 2>&1 &
+  fi
 
   if [ "$press" = 1 ]; then
     touch "$VM_DIR/.booted"
@@ -249,7 +264,7 @@ be_qemu_stop() {
 }
 
 be_qemu_eject() { :; }    # the next start simply leaves the discs out
-be_qemu_destroy() { rm -f "$(monitor_socket "$NAME")"; }
+be_qemu_destroy() { rm -f "$(monitor_socket "$NAME")" "$(qmp_socket "$NAME")"; }
 be_qemu_address() { echo 127.0.0.1; }
 be_qemu_port() {
   case "$1" in rdp) echo "$RDP_PORT" ;; ssh) echo "$SSH_PORT" ;; winrm) echo "$WINRM_PORT" ;; vnc) echo "$VNC_PORT" ;; esac

@@ -258,6 +258,14 @@ check "restart without install media"  "$WS" start web01 --headless
 check "media detached after install"   fails grep -q "26501.1000-fr-fr.iso" "$QCMD"
 check "stop --force"                   "$WS" stop web01 --force --timeout 10
 check "x64 uses TCG"                   sh -c "'$WS' start dc01 --headless && grep -q -- '-accel tcg' '$WINSERVER_HOME/vms/dc01/qemu.cmd' && '$WS' stop dc01 --force"
+check "install run: reboot → pause"     contains "$WINSERVER_HOME/vms/dc01/qemu.cmd" "reboot=shutdown"
+check "first reboot ejects the disc"   sh -c "'$WS' create ej01 --no-start --no-ssh-key && STUB_GUEST_RESET=1 '$WS' start ej01 --headless && for i in 1 2 3 4 5 6 7 8 9 10; do [ -f '$WINSERVER_HOME/vms/ej01/.media-ejected' ] && break; sleep 0.5; done; [ -f '$WINSERVER_HOME/vms/ej01/.media-ejected' ]"
+QLOG="$WINSERVER_HOME/vms/ej01/qmp.log"
+check "  ...eject sent over QMP"        contains "$QLOG" "eject -f cd0"
+check "  ...normal reboots restored"   contains "$QLOG" '"set-action".*"reboot": "reset"'
+check "  ...VM reset and resumed"      sh -c "grep -q system_reset '$QLOG' && grep -q '\"cont\"' '$QLOG'"
+check "  ...restart keeps config disc" sh -c "'$WS' stop ej01 --force && '$WS' start ej01 --headless && grep -q config.iso '$WINSERVER_HOME/vms/ej01/qemu.cmd' && '$WS' stop ej01 --force"
+check "  ...but not the install disc"  fails grep -q "noprompt/winserver-arm64" "$WINSERVER_HOME/vms/ej01/qemu.cmd"
 check "without mkisofs: original ISO"  env WINSERVER_MKISOFS= "$WS" create key01 --no-start --no-ssh-key
 check "  ...and Enter at the prompt"   sh -c "'$WS' start key01 --headless && grep -q 'sendkey ret' '$WINSERVER_HOME/vms/key01/monitor.log' && '$WS' stop key01 --force"
 
@@ -267,6 +275,7 @@ VMX="$WINSERVER_HOME/vms/vm01/vm01.vmwarevm/vm01.vmx"
 check "vmx written"                    test -f "$VMX"
 check "ARM Windows guest type"         contains "$VMX" 'guestOS = "arm-windows11-64"'
 check "UEFI without Secure Boot"       contains "$VMX" 'uefi.secureBoot.enabled = "FALSE"'
+check "disk boots before the CD"       contains "$VMX" 'bios.bootOrder = "hdd,cdrom"'
 check "memory in MiB"                  contains "$VMX" 'memsize = "4096"'
 check "boots the prompt-free ISO"      contains "$VMX" 'sata0:0.fileName = ".*noprompt/winserver-arm64'
 check "config disc attached"           contains "$VMX" 'sata0:1.fileName = ".*config.iso"'

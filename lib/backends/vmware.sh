@@ -92,6 +92,7 @@ usb_xhci.present = "TRUE"
 svga.present = "TRUE"
 tools.syncTime = "TRUE"
 floppy0.present = "FALSE"
+bios.bootOrder = "hdd,cdrom"
 uuid.action = "create"
 msg.autoAnswer = "TRUE"
 EOF

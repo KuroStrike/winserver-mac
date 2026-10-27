@@ -2,10 +2,13 @@
 """Stand-in for qemu-system-* in tests.
 
 Understands just enough of the command line winserver builds: writes the
-pidfile, serves the HMP monitor socket (logging every command next to the
-pidfile), pretends sshd came up on the forwarded SSH port after a short
-delay, and exits on `quit` or `system_powerdown`.
+pidfile, serves the HMP monitor and QMP sockets (logging every command next
+to the pidfile), pretends sshd came up on the forwarded SSH port after a
+short delay, and exits on `quit` or `system_powerdown`. With STUB_GUEST_RESET
+set and `-action reboot=shutdown` on the command line, it also plays Setup's
+first reboot: a QMP SHUTDOWN event with reason "guest-reset".
 """
+import json
 import os
 import re
 import socket
@@ -29,9 +32,12 @@ def opt(name):
 
 pidfile = opt("-pidfile")
 monitor = opt("-monitor")
+qmp = opt("-qmp")
 netdev = opt("-netdev") or ""
 sock_path = re.match(r"unix:(.*?),server", monitor).group(1).replace(",,", ",")
 log_path = os.path.join(os.path.dirname(pidfile), "monitor.log")
+qmp_path = re.match(r"unix:(.*?),server", qmp).group(1).replace(",,", ",") if qmp else None
+qmp_log = os.path.join(os.path.dirname(pidfile), "qmp.log")
 ssh_port = int(re.search(r"hostfwd=tcp:127\.0\.0\.1:(\d+)-:22", netdev).group(1))
 
 if "-daemonize" in args:
@@ -45,7 +51,7 @@ with open(pidfile, "w") as f:
 
 
 def shutdown():
-    for path in (pidfile, sock_path):
+    for path in (pidfile, sock_path, qmp_path):
         try:
             os.unlink(path)
         except FileNotFoundError:
@@ -65,7 +71,32 @@ def serve_ssh():
         conn.close()
 
 
+def serve_qmp():
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(qmp_path)
+    srv.listen()
+    while True:
+        conn, _ = srv.accept()
+        f = conn.makefile("rw", encoding="utf-8")
+        f.write(json.dumps({"QMP": {"version": {}, "capabilities": []}}) + "\n")
+        f.flush()
+        for line in f:
+            cmd = json.loads(line)
+            with open(qmp_log, "a") as log:
+                log.write(json.dumps(cmd) + "\n")
+            f.write(json.dumps({"return": {}}) + "\n")
+            f.flush()
+            if cmd.get("execute") == "quit":
+                shutdown()
+            if cmd.get("execute") == "qmp_capabilities" and "-action" in args and os.environ.get("STUB_GUEST_RESET"):
+                time.sleep(float(os.environ["STUB_GUEST_RESET"]))
+                f.write(json.dumps({"event": "SHUTDOWN", "data": {"guest": True, "reason": "guest-reset"}}) + "\n")
+                f.flush()
+
+
 threading.Thread(target=serve_ssh, daemon=True).start()
+if qmp_path:
+    threading.Thread(target=serve_qmp, daemon=True).start()
 
 mon = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 mon.bind(sock_path)

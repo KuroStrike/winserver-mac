@@ -120,7 +120,16 @@ Boot Manager's countdown, and Enter gets past both but would hit Setup's **Cance
 Without `mkisofs`, the QEMU backend falls back to pressing Enter for a short window (15 s on ARM64, 60 s emulated),
 which ends long before Setup's window appears.
 
-The disk has boot priority over the CD, so once Windows is on it, reboots go straight to the installed system.
+A disc that never prompts has one catch, and it is the reason Microsoft's media prompts at all: after Setup's
+first reboot, a firmware that still prefers the CD boots the installer again, and Setup stops with *"It looks like you
+started an upgrade and booted from installation media"*. Setup no longer needs the install disc at that point, so:
+
+- **QEMU**: during the install, the VM runs with `-action reboot=shutdown,shutdown=pause`, so Setup's first reboot
+  *pauses* it. `lib/backends/qemu-eject-on-reboot.py`, connected to QEMU's QMP socket, ejects the install disc,
+  restores normal reboots, resets and resumes the VM. No timing, no race. The config disc stays until setup is done,
+  since the first logon runs from it.
+- **VMware, Parallels, VirtualBox**: the disk is first in the boot order. On the first boot it's empty and gets
+  skipped; after Setup's first reboot it boots Windows.
 
 ## 4. First boot and the "ready" signal
 

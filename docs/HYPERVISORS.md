@@ -84,7 +84,8 @@ winserver iso srv01
 
 In UTM: Create a New Virtual Machine → Virtualize (ARM64 ISO) or Emulate (x64 ISO) → Windows → **uncheck** "Install
 drivers and SPICE tools" and "Import VHDX" → Boot ISO image: the `srv01-unattended.iso` that `winserver iso` built.
-Pick at least 4 GB of RAM and a 64 GB disk. Setup runs on its own. On ARM64 the virtio network driver is already on the
+Pick at least 4 GB of RAM and a 64 GB disk. Before the first start, open the VM's settings and drag the disk
+above the CD drive in the Drives list, so the installer doesn't boot again after Setup's first reboot. Setup runs on its own. On ARM64 the virtio network driver is already on the
 disc. Connect with Remote Desktop to the IP that UTM shows.
 
 ## Anything else
@@ -94,7 +95,9 @@ Proxmox (OVMF, q35), VMware Workstation, GNOME Boxes, or write it to a USB stick
 
 1. `winserver create srv01 --backend manual [--core] [--domain lab.local] …`
 2. `winserver iso srv01`, then copy `~/.winserver/vms/srv01/srv01-unattended.iso` wherever you need it.
-3. Create a UEFI VM with 2+ vCPUs, 4 GB RAM and a 64 GB disk, attach the ISO, start it.
+3. Create a UEFI VM with 2+ vCPUs, 4 GB RAM and a 64 GB disk, attach the ISO, and put the **disk before the CD** in
+   the boot order (the empty disk is skipped on the first boot; afterwards it keeps the VM from booting the
+   installer again). Start it.
 4. Optional: attach the hypervisor's guest tools ISO as a second CD; first boot installs VMware Tools,
    Parallels Tools or VirtualBox Guest Additions when it finds them.
 5. Administrator password: `winserver password srv01`.

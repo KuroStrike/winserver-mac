@@ -19,6 +19,16 @@ Without mkisofs the QEMU backend presses Enter for you during the first seconds.
 If the ISO has no `efi/microsoft/boot/efisys_noprompt.bin` (some third-party ISOs), winserver warns that the copy will
 still prompt.
 
+## "It looks like you started an upgrade and booted from installation media"
+
+The VM booted the install disc again after Setup's first reboot. winserver's QEMU backend prevents this by ejecting
+the disc at that reboot, and the other backends put the disk first in the boot order. If you built the VM yourself
+from `winserver iso` or the two discs, put the **hard disk before the CD** in its boot order: the empty disk is skipped
+on the first boot.
+
+To recover: power the VM off, detach the Windows ISO (keep the config disc), and start it again. If it then stops in
+a UEFI shell, Setup did not get far enough to make the disk bootable: delete the VM and create it again.
+
 ## Setup asks a question, or stops at "Select the operating system"
 
 The answer file didn't match the ISO. Check what's inside:
