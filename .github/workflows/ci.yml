@@ -9,14 +9,16 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: shellcheck
         run: shellcheck -x bin/winserver lib/*.sh lib/backends/*.sh tests/run.sh tests/stub/hypervisor
+      - name: PowerShell syntax
+        run: pwsh -NoProfile -File tests/lint-ps1.ps1
 
   test:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install wimlib and mkisofs
         run: brew install wimlib cdrtools
       - name: Run tests (fake ISOs, stub QEMU)

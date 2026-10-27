@@ -180,6 +180,21 @@ check "no password in settings"        contains "$SET" "WS_Password = ''"
 KEYS="$(config_file web01 authorized_keys)"
 check "ssh key on the disc"            contains "$KEYS" "test@winserver"
 check "first-boot script on the disc"  test -s "$(config_file web01 firstboot.ps1)"
+# Regression: Windows PowerShell 5.1 ignored a Get-ChildItem -Exclude copy, so first
+# boot now copies the payload by name. Every file staged at the disc root must be listed.
+payload_listed() {
+  local mnt f missing=0
+  mnt="$(mount_iso "$WINSERVER_HOME/vms/web01/config.iso")"
+  for f in "$mnt"/*; do
+    f="$(basename "$f")"
+    case "$f" in autounattend.xml|winserver.tag|drivers) continue ;; esac
+    grep -q "'$f'" "$ROOT/templates/firstboot.ps1" || { echo "not copied by firstboot.ps1: $f"; missing=1; }
+  done
+  hdiutil detach -quiet "$mnt"
+  [ "$missing" = 0 ]
+}
+check "first boot copies all payload"  payload_listed
+check "no -Exclude copies in scripts"  fails grep -n -- "-Exclude" "$ROOT/templates/firstboot.ps1" "$ROOT/templates/post-setup.ps1"
 
 echo; echo "create (QEMU, x64 domain controller, --iso)"
 check "create x64 DC"                  "$WS" create dc01 --iso "$T/server-x64.iso" --domain corp.lab --edition standard --no-start --no-ssh-key --locale en-GB --timezone "GMT Standard Time"

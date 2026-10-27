@@ -19,3 +19,4 @@ test:
 
 lint:
 	shellcheck -x bin/winserver lib/*.sh lib/backends/*.sh tests/run.sh tests/stub/hypervisor
+	pwsh -NoProfile -File tests/lint-ps1.ps1
