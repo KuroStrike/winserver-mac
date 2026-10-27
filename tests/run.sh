@@ -195,6 +195,8 @@ payload_listed() {
 }
 check "first boot copies all payload"  payload_listed
 check "no -Exclude copies in scripts"  fails grep -n -- "-Exclude" "$ROOT/templates/firstboot.ps1" "$ROOT/templates/post-setup.ps1"
+# Regression: Server 2025's own sshd rule is Private-only and VM networks are Public.
+check "sshd rule opened on all profiles" sh -c "grep -A2 'sshRule) {' '$ROOT/templates/post-setup.ps1' | grep -q 'Profile Any'"
 
 echo; echo "create (QEMU, x64 domain controller, --iso)"
 check "create x64 DC"                  "$WS" create dc01 --iso "$T/server-x64.iso" --domain corp.lab --edition standard --no-start --no-ssh-key --locale en-GB --timezone "GMT Standard Time"

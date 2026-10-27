@@ -99,7 +99,7 @@ $admin = Get-LocalUser | Where-Object { $_.SID.Value -like 'S-1-5-*-500' }
 if ($admin) { Set-LocalUser -SID $admin.SID -PasswordNeverExpires $true }
 Enable-NetFirewallRule -Group '@FirewallAPI.dll,-28752' -ErrorAction SilentlyContinue   # Remote Desktop
 Get-NetFirewallRule -Name 'FPS-ICMP4-ERQ-In*', 'CoreNet-Diag-ICMP4-EchoRequest-In*' -ErrorAction SilentlyContinue |
-    Enable-NetFirewallRule
+    Set-NetFirewallRule -Enabled True -Profile Any   # VM networks usually come up as Public
 Enable-PSRemoting -Force -SkipNetworkProfileCheck | Out-Null
 
 $ip = Wait-Network

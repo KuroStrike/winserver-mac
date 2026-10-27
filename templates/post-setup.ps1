@@ -50,8 +50,13 @@ if (Test-Path $keys) {
     # sshd ignores this file unless only Administrators and SYSTEM can touch it.
     icacls.exe $adminKeys /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null
 }
-if (-not (Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue)) {
-    New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' `
+# Windows Server 2025 ships this rule for the Private profile only, while VM
+# networks usually come up as Public: open it everywhere, or sshd is unreachable.
+$sshRule = Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue
+if ($sshRule) {
+    $sshRule | Set-NetFirewallRule -Enabled True -Profile Any
+} else {
+    New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Profile Any `
         -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
 }
 Set-Service -Name sshd -StartupType Automatic
