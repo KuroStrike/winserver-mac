@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Stand-in for qemu-system-* in tests.
+
+Understands just enough of the command line winserver builds: writes the
+pidfile, serves the HMP monitor socket (logging every command next to the
+pidfile), pretends sshd came up on the forwarded SSH port after a short
+delay, and exits on `quit` or `system_powerdown`.
+"""
+import os
+import re
+import socket
+import sys
+import threading
+import time
+
+args = sys.argv[1:]
+
+if "--version" in args:
+    print("QEMU emulator version 99.0.0 (winserver test stub)")
+    sys.exit(0)
+if args[:2] == ["-accel", "help"]:
+    print("Accelerators supported in QEMU binary:\ntcg\nhvf")
+    sys.exit(0)
+
+
+def opt(name):
+    return args[args.index(name) + 1] if name in args else None
+
+
+pidfile = opt("-pidfile")
+monitor = opt("-monitor")
+netdev = opt("-netdev") or ""
+sock_path = re.match(r"unix:(.*?),server", monitor).group(1).replace(",,", ",")
+log_path = os.path.join(os.path.dirname(pidfile), "monitor.log")
+ssh_port = int(re.search(r"hostfwd=tcp:127\.0\.0\.1:(\d+)-:22", netdev).group(1))
+
+if "-daemonize" in args:
+    if os.fork() > 0:
+        time.sleep(0.5)
+        sys.exit(0)
+    os.setsid()
+
+with open(pidfile, "w") as f:
+    f.write(str(os.getpid()))
+
+
+def shutdown():
+    for path in (pidfile, sock_path):
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+    os._exit(0)
+
+
+def serve_ssh():
+    time.sleep(float(os.environ.get("STUB_SSH_DELAY", "2")))
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", ssh_port))
+    srv.listen()
+    while True:
+        conn, _ = srv.accept()
+        conn.sendall(b"SSH-2.0-OpenSSH_for_Windows_stub\r\n")
+        conn.close()
+
+
+threading.Thread(target=serve_ssh, daemon=True).start()
+
+mon = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+mon.bind(sock_path)
+mon.listen()
+while True:
+    conn, _ = mon.accept()
+    conn.sendall(b"QEMU 99.0.0 monitor - type 'help' for more information\r\n(qemu) ")
+    buf = b""
+    while True:
+        data = conn.recv(4096)
+        if not data:
+            break
+        buf += data
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            cmd = line.decode().strip()
+            with open(log_path, "a") as f:
+                f.write(cmd + "\n")
+            if cmd in ("quit", "system_powerdown"):
+                conn.close()
+                shutdown()
+            conn.sendall(b"(qemu) ")
+    conn.close()

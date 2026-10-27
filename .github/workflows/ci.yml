@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -x bin/winserver lib/*.sh lib/backends/*.sh tests/run.sh tests/stub/hypervisor
+
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install wimlib and mkisofs
+        run: brew install wimlib cdrtools
+      - name: Run tests (fake ISOs, stub QEMU)
+        run: bash tests/run.sh

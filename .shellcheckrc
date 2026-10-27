@@ -1,0 +1,5 @@
+# The lib/ modules are sourced into bin/winserver and share its globals
+# (VM settings loaded from vm.conf), which shellcheck can't see across files.
+disable=SC2034,SC2153
+# QEMU options are comma-separated by design: -device nvme,drive=disk0
+disable=SC2054

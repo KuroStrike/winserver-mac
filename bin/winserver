@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# winserver — Windows Server on Apple Silicon Macs, in any hypervisor.
+#
+# Fully unattended installs of ARM64 Windows Server (native speed) or the
+# official x64 evaluation (emulated), on QEMU, VMware Fusion, Parallels or
+# VirtualBox, or as a single unattended ISO for anything else.
+#
+# Written for the bash 3.2 that ships with macOS: no associative arrays,
+# no ${var,,}, and empty arrays are expanded with ${a[@]+"${a[@]}"}.
+set -euo pipefail
+
+WINSERVER_VERSION="0.1.0"
+
+# Resolve the real location of this script, following symlinks
+# (Homebrew and `make install` link bin/winserver into a bin directory).
+_self="${BASH_SOURCE[0]}"
+while [ -L "$_self" ]; do
+  _dir="$(cd -P "$(dirname "$_self")" && pwd)"
+  _self="$(readlink "$_self")"
+  case "$_self" in /*) ;; *) _self="$_dir/$_self" ;; esac
+done
+WINSERVER_ROOT="$(cd -P "$(dirname "$_self")/.." && pwd)"
+unset _self _dir
+
+# shellcheck source=lib/common.sh
+. "$WINSERVER_ROOT/lib/common.sh"
+# shellcheck source=lib/media.sh
+. "$WINSERVER_ROOT/lib/media.sh"
+# shellcheck source=lib/unattend.sh
+. "$WINSERVER_ROOT/lib/unattend.sh"
+# shellcheck source=lib/iso.sh
+. "$WINSERVER_ROOT/lib/iso.sh"
+# shellcheck source=lib/backends/qemu.sh
+. "$WINSERVER_ROOT/lib/backends/qemu.sh"
+# shellcheck source=lib/backends/vmware.sh
+. "$WINSERVER_ROOT/lib/backends/vmware.sh"
+# shellcheck source=lib/backends/parallels.sh
+. "$WINSERVER_ROOT/lib/backends/parallels.sh"
+# shellcheck source=lib/backends/virtualbox.sh
+. "$WINSERVER_ROOT/lib/backends/virtualbox.sh"
+# shellcheck source=lib/backends/manual.sh
+. "$WINSERVER_ROOT/lib/backends/manual.sh"
+# shellcheck source=lib/vm.sh
+. "$WINSERVER_ROOT/lib/vm.sh"
+
+usage() {
+  cat <<EOF
+winserver $WINSERVER_VERSION — Windows Server on Apple Silicon, in any hypervisor
+
+Usage: winserver <command> [options]
+
+Get install media
+  builds                      List ARM64 Windows Server builds available from Microsoft (via UUP dump)
+  fetch arm64 [--build ID]    Build an ARM64 Windows Server ISO from Microsoft's update servers
+  fetch x64                   Download the official Windows Server 2025 evaluation ISO (x64)
+  fetch drivers               Download the virtio-win drivers (needed for ARM64 guests)
+  media                       List ISOs in the cache
+
+Create and run VMs
+  create <name> [options]     Create a VM and start a fully unattended install
+                              (--backend qemu|vmware|parallels|virtualbox|manual)
+  iso <name>                  Build one unattended ISO that boots in any hypervisor
+  start <name> [--headless]   Start a VM (--vnc to also expose a VNC console)
+  wait <name>                 Block until Windows is installed and reachable over SSH
+  stop <name> [--force]       Shut down (ACPI power button, or pull the plug with --force)
+  list                        List VMs and their ports
+  info <name>                 Show a VM's settings
+  delete <name> [--yes]       Delete a VM and its disk
+
+Connect
+  rdp <name>                  Open a Remote Desktop session (Windows App)
+  ssh <name> [-- command]     SSH into the VM (PowerShell)
+  console <name>              Open the VNC console of a headless QEMU VM
+  password <name>             Copy the Administrator password to the clipboard
+
+Other
+  doctor                      Check this Mac for everything winserver needs
+  version                     Print the version
+
+Run 'winserver create --help' for all VM options.
+Docs: https://github.com/KuroStrike/winserver-mac
+EOF
+}
+
+main() {
+  local cmd="${1:-}"
+  [ $# -gt 0 ] && shift
+  case "$cmd" in
+    builds)              cmd_builds "$@" ;;
+    fetch)               cmd_fetch "$@" ;;
+    media)               cmd_media "$@" ;;
+    create)              cmd_create "$@" ;;
+    iso)                 cmd_iso "$@" ;;
+    start)               cmd_start "$@" ;;
+    wait)                cmd_wait "$@" ;;
+    stop)                cmd_stop "$@" ;;
+    list|ls)             cmd_list "$@" ;;
+    info)                cmd_info "$@" ;;
+    delete|rm)           cmd_delete "$@" ;;
+    rdp)                 cmd_rdp "$@" ;;
+    ssh)                 cmd_ssh "$@" ;;
+    console)             cmd_console "$@" ;;
+    password|pw)         cmd_password "$@" ;;
+    doctor)              cmd_doctor "$@" ;;
+    version|--version|-V) echo "winserver $WINSERVER_VERSION" ;;
+    ""|help|-h|--help)   usage ;;
+    *) die "unknown command '$cmd' (see 'winserver --help')" ;;
+  esac
+}
+
+main "$@"
