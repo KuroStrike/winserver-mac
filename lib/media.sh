@@ -281,6 +281,8 @@ pick_image() {
   printf '%s\n' "$1" | awk -F'\t' -v ed="$2" -v want="$3" '
     {
       e = tolower($3); t = $4
+      # Windows 11 media: the exact edition ID (Professional, not ProfessionalN).
+      if (t == "Client") { if (e == ed) { print $1; exit } next }
       if (e ~ /turbine|azure/) next
       if (index(e, ed) == 0) next
       core = (t == "Server Core")

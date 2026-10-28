@@ -38,9 +38,14 @@ function Install-GuestTools {
         if ($vmxnet3) {
             Step 'Installing VMware Tools'
             $root = Split-Path -Parent $vmxnet3
-            pnputil.exe /add-driver (Join-Path $root '*.inf') /subdirs /install | Out-Host
-            $setup = 'setup64.exe', 'setup.exe' | ForEach-Object { Join-Path $root $_ } |
-                Where-Object { Test-Path $_ } | Select-Object -First 1
+            # Drivers from the folders only: autorun.inf at the root is not one.
+            Get-ChildItem -Path $root -Directory | ForEach-Object {
+                pnputil.exe /add-driver (Join-Path $_.FullName '*.inf') /subdirs /install | Out-Host
+            }
+            $setup = $null
+            foreach ($exe in 'setup64.exe', 'setup.exe') {
+                if (-not $setup -and (Test-Path (Join-Path $root $exe))) { $setup = Join-Path $root $exe }
+            }
             if ($setup) { Start-Process -FilePath $setup -ArgumentList '/S /v"/qn REBOOT=R"' -Wait }
         }
     }

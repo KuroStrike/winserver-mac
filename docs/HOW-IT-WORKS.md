@@ -64,6 +64,11 @@ language, and the architecture comes from the UEFI boot loader on the disc (`boo
 - **oobeSystem**: Administrator password, one automatic logon, and a `FirstLogonCommands` entry that looks for
   `winserver.tag` on drives D: to M: and runs `firstboot.ps1` from there.
 
+With a Windows 11 ISO (images of installation type *Client*), the answer file also gets Microsoft's KMS client setup
+key for the edition (so Setup doesn't ask; it doesn't activate), the `LabConfig` switches that skip the TPM, Secure Boot
+and RAM checks, and `HideLocalAccountScreen`, so the built-in Administrator is the account, as on Windows Server.
+Server Manager's setting is left out.
+
 Passwords use Setup's `PlainText=false` encoding: base64 of UTF-16LE *password + field name*. That keeps them out of
 plain sight but is **not** encryption. `config.iso` and the `password` file are `chmod 600`.
 

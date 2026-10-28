@@ -3,7 +3,7 @@
 # On Apple Silicon, Fusion runs ARM64 guests only; on Intel Macs, x64 guests.
 #
 # The VM gets NAT networking; winserver reaches it on its own IP address,
-# which VMware Tools (installed on first boot from Fusion's tools ISO) reports.
+# which VMware Tools report, or else Fusion's NAT DHCP server recorded.
 
 FUSION_APP="${WINSERVER_FUSION_APP:-/Applications/VMware Fusion.app}"
 
@@ -11,6 +11,7 @@ vmrun_bin()       { echo "${WINSERVER_VMRUN:-$FUSION_APP/Contents/Library/vmrun}
 vdiskmanager_bin() { echo "${WINSERVER_VDISKMANAGER:-$FUSION_APP/Contents/Library/vmware-vdiskmanager}"; }
 vmx_path()        { echo "$VM_DIR/$NAME.vmwarevm/$NAME.vmx"; }
 vmrun_()          { "$(vmrun_bin)" -T fusion "$@"; }
+vmnet_leases()    { echo "${WINSERVER_VMNET_LEASES:-/var/db/vmware/vmnet-dhcpd-vmnet8.leases}"; }
 
 # Set KEY = "VALUE" in a .vmx file, replacing the key if it is there.
 vmx_set() {
@@ -45,7 +46,7 @@ be_vmware_require() {
 }
 
 be_vmware_create() {
-  local dir vmx guest nic n=0 iso
+  local dir vmx guest nic usb vmci n=0 iso
   dir="$VM_DIR/$NAME.vmwarevm"
   vmx="$(vmx_path)"
   mkdir -p "$dir"
@@ -53,8 +54,12 @@ be_vmware_create() {
     die "could not create the virtual disk"
   if [ "$ARCH" = arm64 ]; then
     guest="arm-windows11-64"; nic="vmxnet3"     # vmxnet3 driver comes with VMware Tools
+    # No ARM64 driver for the USB 1.1 controller (mouse and keyboard use xHCI) or
+    # for VMCI (VMware Tools 12.4 for ARM have none): leave both out.
+    usb='usb.present = "FALSE"'; vmci=FALSE
   else
     guest="windows2019srvnext-64"; nic="e1000e" # inbox driver
+    usb='usb.present = "TRUE"'; vmci=TRUE
   fi
   cat >"$vmx" <<EOF
 .encoding = "UTF-8"
@@ -87,8 +92,9 @@ ethernet0.present = "TRUE"
 ethernet0.connectionType = "nat"
 ethernet0.virtualDev = "$nic"
 ethernet0.addressType = "generated"
-usb.present = "TRUE"
+$usb
 usb_xhci.present = "TRUE"
+vmci0.present = "$vmci"
 svga.present = "TRUE"
 tools.syncTime = "TRUE"
 floppy0.present = "FALSE"
@@ -120,7 +126,7 @@ be_vmware_start() {
     vmx_set "$vmx" "sata0:0.startConnected" FALSE
     vmx_set "$vmx" "sata0:1.startConnected" FALSE
   fi
-  if [ "$display" = headless ]; then vmrun_ start "$vmx" nogui; else vmrun_ start "$vmx" gui; fi ||
+  if [ "$display" = headless ]; then vmrun_ start "$vmx" nogui; else vmrun_ start "$vmx" gui; fi >/dev/null ||
     die "vmrun could not start $vmx"
   ok "Running in VMware Fusion"
 }
@@ -137,9 +143,17 @@ be_vmware_eject() {
 be_vmware_destroy() { vmrun_ deleteVM "$(vmx_path)" >/dev/null 2>&1 || true; }
 
 be_vmware_address() {
-  local ip
+  local ip mac
   ip="$(vmrun_ getGuestIPAddress "$(vmx_path)" 2>/dev/null || true)"
-  case "$ip" in [0-9]*.[0-9]*.[0-9]*.[0-9]*) echo "$ip" ;; esac
+  case "$ip" in [0-9]*.[0-9]*.[0-9]*.[0-9]*) echo "$ip"; return ;; esac
+  # VMware Tools for Windows on ARM don't report the address to vmrun. Fusion
+  # writes the MAC into the .vmx at first power-on: find its newest NAT lease.
+  mac="$(lower "$(sed -n 's/^ethernet0.generatedAddress = "\(.*\)"$/\1/p' "$(vmx_path)")")"
+  [ -n "$mac" ] || return 0
+  awk -v mac="$mac" '
+    /^lease /           { ip = $2 }
+    /hardware ethernet/ { m = tolower($3); sub(/;$/, "", m); if (m == mac) found = ip }
+    END                 { if (found) print found }' "$(vmnet_leases)" 2>/dev/null || true
 }
 
 be_vmware_port() {

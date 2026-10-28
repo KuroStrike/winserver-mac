@@ -70,10 +70,13 @@ copy_virtio_drivers() {
   ok "Added $copied ARM64 virtio drivers"
 }
 
+# Windows 11 rather than Windows Server: the editions cmd_create allows for it.
+is_client() { case "${EDITION:-}" in pro|enterprise|education) return 0 ;; esac; return 1; }
+
 # Write the config payload for the loaded VM (see load_vm) into directory $1:
 # answer file, first-boot scripts, settings, drivers, SSH key, custom script.
 stage_config() {
-  local stage="$1" arch_tag drivers="" key="" specialize="" pw feature features=""
+  local stage="$1" arch_tag drivers="" key="" specialize="" setup="" oobe="" manager="" pw feature features=""
   pw="$(cat "$VM_DIR/password")"
   case "$ARCH" in arm64) arch_tag=arm64 ;; *) arch_tag=amd64 ;; esac
 
@@ -99,6 +102,26 @@ stage_config() {
       '    </component>')"
   fi
 
+  if is_client; then
+    # Windows 11 checks for TPM 2.0, Secure Boot and 4 GB of RAM, which not every
+    # hypervisor gives a VM (VMware only with encryption): skip the checks, the
+    # way Microsoft's LabConfig switches allow. Then no local account screen:
+    # the built-in Administrator gets the password, as on Windows Server.
+    setup="$(printf '%s\n' '      <RunSynchronous>'
+      n=0
+      for check in TPM SecureBoot RAM; do
+        n=$((n + 1))
+        printf '        <RunSynchronousCommand wcm:action="add"><Order>%s</Order><Path>reg.exe add HKLM\\SYSTEM\\Setup\\LabConfig /v Bypass%sCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>\n' "$n" "$check"
+      done
+      printf '%s\n' '      </RunSynchronous>')"
+    oobe="        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>"
+  else
+    manager="    <component name=\"Microsoft-Windows-ServerManager-SvrMgrNc\" processorArchitecture=\"$arch_tag\" publicKeyToken=\"31bf3856ad364e35\" language=\"neutral\" versionScope=\"nonSxS\">
+      <DoNotOpenServerManagerAtLogon>true</DoNotOpenServerManagerAtLogon>
+    </component>"
+  fi
+
   render_template "$WINSERVER_ROOT/templates/autounattend.xml" \
     WS_ARCH="$arch_tag" \
     WS_UI_LANG="$(xml_escape "$UI_LANG")" \
@@ -113,6 +136,9 @@ stage_config() {
     WS_DRIVER_PATHS="$drivers" \
     WS_PRODUCT_KEY="$key" \
     WS_SPECIALIZE_EXTRA="$specialize" \
+    WS_SETUP_EXTRA="$setup" \
+    WS_OOBE_EXTRA="$oobe" \
+    WS_SERVER_MANAGER="$manager" \
     >"$stage/autounattend.xml" || die "could not render autounattend.xml"
   if has xmllint; then
     xmllint --noout "$stage/autounattend.xml" || die "generated autounattend.xml is not valid XML"

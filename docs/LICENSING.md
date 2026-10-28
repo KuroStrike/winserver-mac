@@ -29,6 +29,19 @@ each path. It is not legal advice.
   Microsoft documents how to convert an evaluation installation to a licensed edition if you own a license.
 - Running it under emulation is slow but changes nothing about the license.
 
+## Windows 11
+
+`create --iso` also takes Microsoft's Windows 11 ISOs (for example the official ARM64 one from
+[microsoft.com/software-download/windows11arm64](https://www.microsoft.com/software-download/windows11arm64)):
+
+- To let Setup pick the edition without asking, winserver gives it Microsoft's published
+  [KMS client setup key](https://learn.microsoft.com/windows-server/get-started/kms-client-activation-keys) for that
+  edition. That key **does not activate** Windows: it runs unactivated until you add your own license
+  (`--product-key`, or Settings > Activation).
+- Windows 11 asks for TPM 2.0, Secure Boot and 4 GB of RAM. Not every hypervisor gives a VM a TPM (VMware Fusion only
+  with encryption), so the answer file sets Windows Setup's `LabConfig` switches to skip those checks. That suits lab
+  VMs like these; for anything else, meet the requirements instead.
+
 ## Your own media
 
 `--iso` accepts any Windows Server ISO. If you have licensed media (for example from a Visual Studio subscription or a

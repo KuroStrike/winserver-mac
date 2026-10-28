@@ -62,6 +62,11 @@ On an M4 Pro with 8 vCPUs, an emulated Server Core install takes about 22 minute
 37. Fewer cores, a slower Mac or Desktop Experience can make it several times longer. `wait` gives up after 8 hours.
 Watch progress in the VM window or with `--vnc`. Use `--core`, give it `--cpus 6` or more, and close other heavy apps.
 
+## VMware Fusion: `winserver wait` never sees the VM (0.1.x)
+
+VMware Tools for Windows on ARM don't report the guest's IP address to `vmrun`. Since 0.2.0, winserver reads it from
+Fusion's NAT DHCP leases instead. Update winserver; the VM itself is fine.
+
 ## The VM's clock is off by a few hours
 
 VMs created by winserver 0.1.0 on QEMU read the Mac's local time as their own, so their clock is off by the difference

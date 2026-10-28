@@ -38,6 +38,8 @@ winserver create srv01                  # --backend qemu is the default when QEM
 - Networking: user-mode NAT with port forwards on `127.0.0.1` (RDP 33890+, SSH 22220+, WinRM 59850+). No admin rights needed.
 - Console: a Cocoa window, or `--headless --vnc` and `winserver console`.
 - Drivers: virtio-win (network, balloon…) on ARM64; x64 uses devices Windows has inbox drivers for.
+- On ARM64, Device Manager lists about 33 devices without a driver (`ACPI\LNRO0005`, `ACPI\QEMU0002`). They are the
+  empty virtio-mmio slots and the firmware-config device of QEMU's `virt` machine: harmless, every Windows guest on it has them.
 
 ## VMware Fusion
 
@@ -47,8 +49,10 @@ winserver create srv01 --backend vmware
 
 - Creates `~/.winserver/vms/srv01/srv01.vmwarevm`, which you can also open in the Fusion window.
 - UEFI, NVMe disk, SATA CD drives, vmxnet3 network on NAT.
-- First boot installs **VMware Tools** from Fusion's own tools ISO. That brings the ARM64 network driver, and lets
-  winserver ask Fusion for the VM's IP address. `winserver rdp`/`ssh` connect to that IP on the standard ports.
+- First boot installs **VMware Tools** from Fusion's own tools ISO, which brings the ARM64 network driver.
+- winserver finds the VM's IP address through VMware Tools, or else in the leases of Fusion's NAT DHCP server
+  (`/var/db/vmware/vmnet-dhcpd-vmnet8.leases`). On Apple Silicon the second is the one that works: VMware Tools for
+  Windows on ARM (12.4) don't report the address to `vmrun`. `winserver rdp`/`ssh` connect to that IP on the standard ports.
 - `stop` uses a soft power-off; `--force` is a hard one.
 
 ## Parallels Desktop

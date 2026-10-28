@@ -24,6 +24,7 @@
         <Enable>false</Enable>
         <WillShowUI>Never</WillShowUI>
       </DynamicUpdate>
+@@SETUP_EXTRA@@
       <DiskConfiguration>
         <WillShowUI>OnError</WillShowUI>
         <Disk wcm:action="add">
@@ -108,9 +109,7 @@
         </FirewallGroup>
       </FirewallGroups>
     </component>
-    <component name="Microsoft-Windows-ServerManager-SvrMgrNc" processorArchitecture="@@ARCH@@" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <DoNotOpenServerManagerAtLogon>true</DoNotOpenServerManagerAtLogon>
-    </component>
+@@SERVER_MANAGER@@
 @@SPECIALIZE_EXTRA@@
   </settings>
 
@@ -142,6 +141,7 @@
         <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
         <ProtectYourPC>3</ProtectYourPC>
+@@OOBE_EXTRA@@
       </OOBE>
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">

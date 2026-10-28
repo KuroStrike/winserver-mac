@@ -101,9 +101,11 @@ Hypervisor
                          Parallels, VirtualBox that is; 'manual' only prepares the discs)
 
 Media
-  --iso FILE             Windows Server ISO (default: newest from 'winserver fetch')
+  --iso FILE             Windows Server ISO (default: newest from 'winserver fetch'),
+                         or a Windows 11 ISO from Microsoft
   --arch arm64|x64       Guest architecture (default: taken from the ISO)
-  --edition NAME         datacenter (default) or standard
+  --edition NAME         Server: datacenter (default) or standard
+                         Windows 11: pro (default), enterprise or education
   --core | --desktop     Server Core or Desktop Experience
                          (default: --desktop on arm64, --core on x64, which is emulated on Apple Silicon)
   --image-index N        Pick the install.wim image yourself
@@ -140,12 +142,12 @@ EOF
 }
 
 cmd_create() {
-  local name="" backend="" arch="" iso="" edition="datacenter" experience="" index="" key=""
+  local name="" backend="" arch="" iso="" edition="" experience="" index="" key=""
   local cpus=4 memory="4G" disk="64G" nic="" cpu_model=""
   local hostname="" password="" locale="" keyboard="" timezone="UTC"
   local ssh_key="" no_ssh_key=0 domain="" netbios="" features="" script=""
   local headless=0 vnc=0 no_start=0
-  local mnt iso_arch images lang k f
+  local mnt iso_arch images lang k f client=0 edition_id
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -188,7 +190,6 @@ cmd_create() {
   valid_vm_name "$name" || die "VM name must be 1-15 letters, digits or '-', and contain a letter (it becomes the Windows computer name)"
   [ ! -e "$VMS_DIR/$name" ] || die "a VM named '$name' already exists"
   case "$backend" in ""|qemu|vmware|parallels|virtualbox|manual) ;; *) die "--backend must be one of: $BACKENDS" ;; esac
-  case "$edition" in datacenter|standard) ;; *) die "--edition must be datacenter or standard" ;; esac
   case "$arch" in ""|arm64|x64) ;; aarch64) arch=arm64 ;; amd64|x86_64) arch=x64 ;; *) die "--arch must be arm64 or x64" ;; esac
   case "$cpus" in ''|*[!0-9]*) die "--cpus must be a number" ;; esac
   size_to_mib "$memory" >/dev/null || die "--memory must look like 4G or 4096M"
@@ -242,12 +243,39 @@ cmd_create() {
   if [ "$arch" = arm64 ] && [ "$(host_arch)" != arm64 ]; then
     die "ARM64 guests need an Apple Silicon Mac"
   fi
-  experience="${experience:-$([ "$arch" = arm64 ] && echo desktop || echo core)}"
+  # Windows 11 media has "Client" images; anything else is Windows Server.
+  if printf '%s\n' "$images" | awk -F'\t' '$4 == "Client" {f = 1} END {exit !f}'; then client=1; fi
+  if [ "$client" = 1 ]; then
+    edition="${edition:-pro}"
+    case "$edition" in
+      pro) edition_id=professional ;;
+      enterprise|education) edition_id="$edition" ;;
+      *) die "--edition must be pro, enterprise or education for Windows 11 (Home has no Remote Desktop)" ;;
+    esac
+    [ "${experience:-desktop}" = desktop ] || die "--core is for Windows Server"
+    [ -z "$domain" ] || die "--domain makes a domain controller, which needs Windows Server"
+    [ -z "$features" ] || die "--feature installs Windows Server roles and features, which Windows 11 doesn't have"
+    [ "$(size_to_mib "$memory")" -ge 4096 ] || die "Windows 11 needs at least 4G of memory"
+    # Microsoft's published KMS client setup keys: Setup needs one to pick the
+    # edition without asking. They don't activate Windows; --product-key does.
+    if [ -z "$key" ]; then
+      case "$edition" in
+        pro)        key=W269N-WFGWX-YVC9B-4J6C9-T83GX ;;
+        enterprise) key=NPPR9-FWDCX-D2C8J-H872K-2YT43 ;;
+        education)  key=NW6C2-QMPVW-D7KKK-3GKT6-VCFB2 ;;
+      esac
+    fi
+  else
+    edition="${edition:-datacenter}"
+    case "$edition" in datacenter|standard) ;; *) die "--edition must be datacenter or standard" ;; esac
+    edition_id="$edition"
+  fi
+  experience="${experience:-$([ "$arch" = arm64 ] || [ "$client" = 1 ] && echo desktop || echo core)}"
   nic="${nic:-$([ "$arch" = arm64 ] && echo virtio || echo e1000e)}"
 
   if [ -z "$index" ]; then
     if [ -n "$images" ]; then
-      index="$(pick_image "$images" "$edition" "$experience")"
+      index="$(pick_image "$images" "$edition_id" "$experience")"
       [ -n "$index" ] || die "this ISO has no $edition $experience image. Images found:
 $(printf '%s\n' "$images" | awk -F'\t' '{printf "  %s  %s (%s)\n", $1, $6, $4}')"
       lang="$(printf '%s\n' "$images" | awk -F'\t' -v i="$index" '$1 == i {print $5}')"

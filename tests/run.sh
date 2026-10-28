@@ -101,6 +101,26 @@ ARM_ISO="$WINSERVER_HOME/cache/iso/winserver-arm64-26501.1000-fr-fr.iso"
 make_windows_iso "$ARM_ISO" 12 bootaa64.efi
 make_windows_iso "$T/server-x64.iso" 9 bootx64.efi
 
+# A Windows 11-like ISO: client editions in Microsoft's order, installation type "Client".
+make_client_iso() {
+  local out="$1" dir="$T/iso-src-client" i=0 ed cmd
+  mkdir -p "$dir/sources" "$dir/efi/boot" "$dir/efi/microsoft/boot"
+  : >"$dir/efi/boot/bootaa64.efi"
+  boot_image PROMPT "$dir/efi/microsoft/boot/efisys.bin"
+  boot_image NOPROMPT "$dir/efi/microsoft/boot/efisys_noprompt.bin"
+  for ed in Core Professional ProfessionalN Education; do
+    i=$((i + 1))
+    if [ "$i" = 1 ]; then cmd=capture; else cmd=append; fi
+    wimlib-imagex "$cmd" "$T/payload" "$dir/sources/install.wim" "Windows 11 $ed" \
+      --image-property "WINDOWS/ARCH=12" \
+      --image-property "WINDOWS/EDITIONID=$ed" \
+      --image-property "WINDOWS/INSTALLATIONTYPE=Client" \
+      --image-property "WINDOWS/LANGUAGES/DEFAULT=en-US" >/dev/null
+  done
+  hdiutil makehybrid -quiet -iso -joliet -udf -o "$out" "$dir"
+}
+make_client_iso "$T/win11-arm64.iso"
+
 mkdir -p "$T/virtio/NetKVM/w11/ARM64" "$T/virtio/viostor/w11/ARM64" "$T/virtio/NetKVM/2k25/amd64"
 echo "; netkvm" >"$T/virtio/NetKVM/w11/ARM64/netkvm.inf"
 echo "; viostor" >"$T/virtio/viostor/w11/ARM64/viostor.inf"
@@ -173,6 +193,8 @@ check "answer file sets the hostname"  contains "$XML" "<ComputerName>WEB01</Com
 check "answer file has driver paths"   contains "$XML" 'D:\\drivers'
 check "QEMU VM gets a UTC clock"       contains "$CONF" "^RTC=utc"
 check "  ...and Windows is told so"    contains "$XML" "RealTimeIsUniversal /t REG_DWORD /d 1"
+check "Server keeps Server Manager off" contains "$XML" "SvrMgrNc"
+check "  ...and its hardware checks"   fails grep -q LabConfig "$XML"
 check "ARM64 drivers on the disc"      contains "$T/out-web01-drivers" "NetKVM/netkvm.inf"
 check "x64 drivers not on the disc"    fails grep -q amd64 "$T/out-web01-drivers"
 PW="$(cat "$WINSERVER_HOME/vms/web01/password")"
@@ -240,6 +262,28 @@ check "rejects tiny memory"            fails "$WS" create small1 --memory 1G --n
 check "rejects unknown backend"        fails "$WS" create hv01 --backend hyperv --no-start
 check "rejects x64 on VMware (arm64)"  fails "$WS" create vx01 --iso "$T/server-x64.iso" --backend vmware --no-start
 check "rejects x64 on VirtualBox"      fails "$WS" create bx01 --iso "$T/server-x64.iso" --backend virtualbox --no-start
+
+echo; echo "create (Windows 11 media)"
+check "create from a Windows 11 ISO"   "$WS" create w11 --iso "$T/win11-arm64.iso" --no-start --no-ssh-key
+CONF="$WINSERVER_HOME/vms/w11/vm.conf"
+check "Pro by default"                 contains "$CONF" "^EDITION=pro"
+check "  ...exactly Pro, not Pro N"    contains "$CONF" "^IMAGE_INDEX=2"
+check "  ...with the desktop"          contains "$CONF" "^EXPERIENCE=desktop"
+XML="$(config_file w11 autounattend.xml)"
+check "answer file is valid XML"       xmllint --noout "$XML"
+check "Setup picks the edition by key" contains "$XML" "<Key>W269N-WFGWX-YVC9B-4J6C9-T83GX</Key>"
+check "TPM check skipped"              contains "$XML" 'LabConfig /v BypassTPMCheck'
+check "Secure Boot check skipped"      contains "$XML" 'LabConfig /v BypassSecureBootCheck'
+check "no local account screen"        contains "$XML" "<HideLocalAccountScreen>true</HideLocalAccountScreen>"
+check "no Server Manager setting"      fails grep -q SvrMgrNc "$XML"
+check "--edition education"            sh -c "'$WS' create w11e --iso '$T/win11-arm64.iso' --edition education --no-start --no-ssh-key && grep -q '^IMAGE_INDEX=4' '$WINSERVER_HOME/vms/w11e/vm.conf'"
+check "your own --product-key wins"    sh -c "'$WS' create w11k --iso '$T/win11-arm64.iso' --product-key AAAAA-BBBBB-CCCCC-DDDDD-EEEEE --no-start --no-ssh-key && grep -q '^PRODUCT_KEY=AAAAA-BBBBB-CCCCC-DDDDD-EEEEE' '$WINSERVER_HOME/vms/w11k/vm.conf'"
+check "rejects Home"                   fails "$WS" create w11h --iso "$T/win11-arm64.iso" --edition home --no-start
+check "rejects --domain"               fails "$WS" create w11d --iso "$T/win11-arm64.iso" --domain lab.local --no-start
+check "rejects --feature"              fails "$WS" create w11f --iso "$T/win11-arm64.iso" --feature Web-Server --no-start
+check "rejects --core"                 fails "$WS" create w11c --iso "$T/win11-arm64.iso" --core --no-start
+check "rejects less than 4G"           fails "$WS" create w11m --iso "$T/win11-arm64.iso" --memory 3G --no-start
+check "Server editions on Server media" fails "$WS" create bad1 --iso "$T/server-x64.iso" --edition pro --no-start
 check "rejects a missing --script"     fails "$WS" create scr00 --no-start --no-ssh-key --script nope.ps1
 # Installed with Homebrew there is no examples/ next to you: bundled scripts resolve from any folder.
 check "bundled --script from anywhere" sh -c "cd '$T' && '$WS' create scr01 --no-start --no-ssh-key --script examples/ad-lab-seed.ps1 && cmp -s '$ROOT/examples/ad-lab-seed.ps1' '$WINSERVER_HOME/vms/scr01/custom.ps1'"
@@ -312,6 +356,11 @@ check "start"                          "$WS" start vm01 --headless
 check "vmrun started it headless"      contains "$STUB_STATE/vmrun.log" "start .*vm01.vmx nogui"
 check "list shows it running"          sh -c "'$WS' list | grep -E '^vm01 +vmware +arm64 +running'"
 check "address from VMware Tools"      sh -c "'$WS' info vm01 | grep -q '192.168.64.7'"
+# Regression: VMware Tools for Windows on ARM never report the address; Fusion's NAT leases have it.
+printf 'ethernet0.generatedAddress = "00:0c:29:ab:cd:ef"\n' >>"$VMX"
+printf 'lease 172.16.5.200 {\n\thardware ethernet 00:0c:29:00:00:01;\n}\nlease 172.16.5.128 {\n\thardware ethernet 00:0C:29:AB:CD:EF;\n}\n' >"$T/vmnet8.leases"
+check "address from the NAT lease"     sh -c "STUB_NO_TOOLS=1 WINSERVER_VMNET_LEASES='$T/vmnet8.leases' '$WS' info vm01 | grep -q '172.16.5.128'"
+check "no driverless devices on ARM"   sh -c "grep -q 'usb.present = \"FALSE\"' '$VMX' && grep -q 'vmci0.present = \"FALSE\"' '$VMX'"
 check "stop"                           "$WS" stop vm01 --timeout 10
 check "discs off after install"        sh -c "sed -i '' 's/^INSTALLED=0/INSTALLED=1/' '$WINSERVER_HOME/vms/vm01/vm.conf' && '$WS' start vm01 --headless && grep -q 'sata0:0.startConnected = \"FALSE\"' '$VMX' && '$WS' stop vm01 --force"
 check "delete"                         "$WS" delete vm01 --yes

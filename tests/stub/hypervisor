@@ -20,7 +20,7 @@ case "$tool" in
       start) [ -f "$vmx" ] || { echo "Error: no vmx"; exit 1; }; echo "$vmx" >"$state/running/$(key "$vmx")" ;;
       stop) rm -f "$state/running/$(key "$vmx")" ;;
       list) n=$(find "$state/running" -type f | wc -l | tr -d ' '); echo "Total running VMs: $n"; cat "$state"/running/* 2>/dev/null ;;
-      getGuestIPAddress) echo 192.168.64.7 ;;
+      getGuestIPAddress) if [ -n "${STUB_NO_TOOLS:-}" ]; then echo "Error: The VMware Tools are not running"; exit 255; fi; echo 192.168.64.7 ;;
     esac ;;
   VBoxManage)
     case "${1:-}" in

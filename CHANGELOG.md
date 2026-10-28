@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0 (2026-10-28)
+
+ARM64 proven on real installs with QEMU and VMware Fusion, and Windows 11 support, which made that possible: Microsoft
+serves no ARM64 Windows Server ISO today, but its official Windows 11 ARM64 ISO goes through the same installer, answer
+file, drivers, guest tools and first boot.
+
+- **Windows 11**: `create --iso` takes Microsoft's Windows 11 ISOs. Pro by default (`--edition enterprise` or
+  `education`); Home is refused, having no Remote Desktop. The answer file uses Microsoft's KMS client setup key so
+  Setup picks the edition (it doesn't activate Windows), skips the TPM / Secure Boot / RAM checks with Setup's LabConfig
+  switches, and keeps the built-in Administrator as the account. `--domain`, `--feature` and `--core` are refused, being
+  Windows Server things.
+- **VMware Fusion on ARM: `wait`, `rdp` and `ssh` never found the VM.** VMware Tools for Windows on ARM (12.4) don't
+  report the guest's address to `vmrun`. winserver now falls back to Fusion's NAT DHCP leases, by the VM's MAC address.
+- VMware Fusion on ARM: no USB 1.1 controller and no VMCI device in the VM, since Windows on ARM has no driver for
+  either (they showed as broken devices). x64 VMs keep both.
+- VMware: drivers from the Tools disc are installed folder by folder (no more "failed to add autorun.inf" in the log),
+  and `vmrun`'s own log line no longer shows at `start`.
+- Verified: QEMU 11.1 ARM64 (HVF) in ~14 minutes and VMware Fusion 13.6.2 ARM64 in ~13 minutes, each from `create` to
+  RDP (NLA), SSH (key and password) and WinRM, with no password left in the guest. Parallels and VirtualBox are next.
+
 ## 0.1.2 (2026-10-27)
 
 Security and polish, from a full audit of 0.1.1 on real installs.
