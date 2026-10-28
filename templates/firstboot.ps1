@@ -108,6 +108,8 @@ Enable-NetFirewallRule -Group '@FirewallAPI.dll,-28752' -ErrorAction SilentlyCon
 Get-NetFirewallRule -Name 'FPS-ICMP4-ERQ-In*', 'CoreNet-Diag-ICMP4-EchoRequest-In*' -ErrorAction SilentlyContinue |
     Set-NetFirewallRule -Enabled True -Profile Any   # VM networks usually come up as Public
 Enable-PSRemoting -Force -SkipNetworkProfileCheck | Out-Null
+# A lab VM must stay reachable: no sleep, no hibernation, no blank screen.
+'standby-timeout-ac', 'hibernate-timeout-ac', 'monitor-timeout-ac' | ForEach-Object { powercfg.exe /change $_ 0 }
 
 $ip = Wait-Network
 if ($ip) { Step "Network is up: $($ip.IPAddress)" } else { Write-Warning 'No IPv4 address after 3 minutes' }

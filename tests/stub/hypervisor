@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stand-in for vmrun, vmware-vdiskmanager, VBoxManage and prlctl in tests.
+# Stand-in for vmrun, vmware-vdiskmanager, VBoxManage, prlctl, utmctl and osascript in tests.
 # Logs every call to $STUB_STATE/<tool>.log and keeps "running" VMs as files
 # in $STUB_STATE/running/, which is all winserver's backends look at.
 set -u
@@ -10,6 +10,20 @@ printf '%s\n' "$*" >>"$state/$tool.log"
 key() { printf '%s' "$1" | tr '/ ' '__'; }
 
 case "$tool" in
+  osascript)
+    # UTM's scripts: utm-create.applescript NAME ... -> a VM id; utm-eject.applescript NAME.
+    case "$(basename "${1:-}")" in
+      utm-create.applescript) echo stopped >"$state/utm-$2"; echo "6D1E0C3A-0000-4000-8000-$(printf '%012d' $$)" ;;
+      utm-eject.applescript) [ -f "$state/utm-$2" ] || exit 1 ;;
+    esac ;;
+  utmctl)
+    for vm; do :; done
+    case "${1:-}" in
+      status) if [ -f "$state/utm-$vm" ]; then cat "$state/utm-$vm"; else echo "Virtual machine not found"; exit 1; fi ;;
+      start) echo started >"$state/utm-$vm" ;;
+      stop) echo stopped >"$state/utm-$vm" ;;
+      delete) rm -f "$state/utm-$vm" ;;
+    esac ;;
   vmware-vdiskmanager)
     for last; do :; done
     : >"$last" ;;
@@ -32,6 +46,10 @@ case "$tool" in
   prlctl)
     # STUB_PRL_DOWN=1: Parallels installed but its service not running.
     if [ -n "${STUB_PRL_DOWN:-}" ]; then echo "Login failed: Unable to connect to Parallels Service."; exit 1; fi
+    # STUB_PRL_STANDARD=1: an edition whose prlctl may not create VMs.
+    if [ "${1:-}" = create ] && [ -n "${STUB_PRL_STANDARD:-}" ]; then
+      echo "The command is available only in Parallels Desktop for Mac Pro or Business Edition."; exit 1
+    fi
     case "${1:-}" in
       start) echo "$2" >"$state/running/$(key "$2")" ;;
       stop) rm -f "$state/running/$(key "$2")" ;;

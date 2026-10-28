@@ -1,19 +1,21 @@
 # Hypervisors
 
 winserver does the Windows part (media, answer file, drivers, guest tools, first-boot setup) the same way everywhere.
-Only creating and running the VM differs. Four hypervisors are automated end to end, and every other one is covered by a
-single unattended ISO.
+Only creating and running the VM differs. It is built around free and open-source hypervisors: **QEMU** and **UTM**
+(QEMU in a Mac app) are automated end to end, VirtualBox is too, and every other hypervisor is covered by a single
+unattended ISO. VMware Fusion and Parallels Desktop work as optional extras for people who already use them.
 
-| | ARM64 Windows Server on Apple Silicon | x64 Windows Server on Apple Silicon | Intel Mac (x64) |
-|---|---|---|---|
-| **QEMU** (`--backend qemu`, free) | Native speed (HVF) | Emulated (TCG), slow but works | Native (HVF) |
-| **VMware Fusion** (`--backend vmware`, free for personal use) | Native | Not possible | Native |
-| **Parallels Desktop** (`--backend parallels`) | Native | Not supported | Native |
-| **VirtualBox 7.1+** (`--backend virtualbox`, free) | Native (experimental in VirtualBox) | Not possible | Native |
-| **UTM, Hyper-V, Proxmox, VMware Workstation, bare metal…** | `winserver iso` | UTM: `winserver iso` (emulated) | `winserver iso` |
+| | ARM64 on Apple Silicon | x64 on Apple Silicon | Intel Mac (x64) | Verified on a real install |
+|---|---|---|---|---|
+| **QEMU** (`--backend qemu`, GPL) | Native speed (HVF) | Emulated (TCG), slow but works | Native (HVF) | ARM64 and x64, server and DC |
+| **UTM** (`--backend utm`, Apache-2.0) | Native (Apple Hypervisor) | Emulated | Native | ARM64 |
+| **VirtualBox 7.1+** (`--backend virtualbox`, GPL core) | Native (experimental in VirtualBox) | Not possible | Native | not yet |
+| **UTM's window, Hyper-V, Proxmox, bare metal…** | `winserver iso` | `winserver iso` (emulated) | `winserver iso` | |
+| VMware Fusion (`--backend vmware`, proprietary, free for personal use) | Native | Not possible | Native | ARM64 |
+| Parallels Desktop Pro/Business (`--backend parallels`, proprietary) | Native | Not supported | Native | no (see below) |
 
-Without `--backend`, winserver uses QEMU if it is installed, otherwise the first of VMware Fusion, Parallels and
-VirtualBox that it finds. `winserver doctor` shows what's installed.
+Without `--backend`, winserver uses QEMU if it is installed, then UTM, then the first of VirtualBox, VMware Fusion and
+Parallels that it finds. `winserver doctor` shows what's installed.
 
 ## Two ways to deliver the setup
 
@@ -41,7 +43,39 @@ winserver create srv01                  # --backend qemu is the default when QEM
 - On ARM64, Device Manager lists about 33 devices without a driver (`ACPI\LNRO0005`, `ACPI\QEMU0002`). They are the
   empty virtio-mmio slots and the firmware-config device of QEMU's `virt` machine: harmless, every Windows guest on it has them.
 
-## VMware Fusion
+## UTM
+
+```bash
+brew install --cask utm                 # or download it from https://mac.getutm.app
+winserver create srv01 --backend utm    # chosen by default when QEMU itself isn't installed
+```
+
+- [UTM](https://mac.getutm.app) is QEMU in a Mac app, free and open source. winserver creates the VM through UTM's
+  scripting interface, named `winserver-srv01`, and drives it with `utmctl`: it shows in UTM's window like any other.
+  The first time, macOS asks whether your terminal may control UTM: allow it.
+- ARM64 runs at native speed with the Apple Hypervisor; x64 is emulated, as with QEMU.
+- NVMe disk listed before the install and config discs (USB CD drives on ARM64), so the firmware boots Windows from
+  the disk after Setup's first reboot. At the next `start` after setup, winserver detaches both discs.
+- Networking: QEMU's user-mode NAT with RDP, SSH and WinRM forwarded on `127.0.0.1` (33890+, 22220+, 59850+), as with
+  the QEMU backend. The hardware clock is UTC, and the answer file tells Windows so.
+- UTM is sandboxed and keeps references to the ISOs, not copies: don't move `~/.winserver` while a VM still needs its
+  install discs.
+- Prefer clicking? `winserver create srv01 --backend manual && winserver iso srv01`, then in UTM: Create a New Virtual
+  Machine → Virtualize (ARM64) or Emulate (x64) → Windows → uncheck "Install drivers and SPICE tools" → boot ISO image:
+  `srv01-unattended.iso`. Before the first start, drag the disk above the CD drive in the VM's Drives list.
+
+## VirtualBox
+
+```bash
+winserver create srv01 --backend virtualbox
+```
+
+- Needs VirtualBox 7.1 or later. ARM64 guests on Apple Silicon are still young in VirtualBox; report what you see.
+- UEFI, NVMe disk, AHCI CD drives, NAT with the same `127.0.0.1` port forwards as QEMU.
+- ARM64 uses a virtio network card (driver from virtio-win on the config disc); x64 uses the Intel PRO/1000.
+- First boot installs the **Guest Additions**, trusting Oracle's certificates first so the silent install doesn't stop at a prompt.
+
+## VMware Fusion (optional)
 
 ```bash
 winserver create srv01 --backend vmware
@@ -55,42 +89,20 @@ winserver create srv01 --backend vmware
   Windows on ARM (12.4) don't report the address to `vmrun`. `winserver rdp`/`ssh` connect to that IP on the standard ports.
 - `stop` uses a soft power-off; `--force` is a hard one.
 
-## Parallels Desktop
+## Parallels Desktop (optional, Pro or Business edition)
 
 ```bash
 winserver create srv01 --backend parallels
 ```
 
-- Uses `prlctl`, which ships with Parallels Desktop. Open Parallels once (and sign in) so its service is running.
-- Avoids Parallels' "Express installation", which would fight the answer file.
-- First boot installs **Parallels Tools** from the ISO inside the app (network driver, IP reporting).
-- Connections go to the VM's IP on Parallels' shared network.
-
-## VirtualBox
-
-```bash
-winserver create srv01 --backend virtualbox
-```
-
-- Needs VirtualBox 7.1 or later. ARM64 guests on Apple Silicon are still young in VirtualBox; report what you see.
-- UEFI, NVMe disk, AHCI CD drives, NAT with the same `127.0.0.1` port forwards as QEMU.
-- ARM64 uses a virtio network card (driver from virtio-win on the config disc); x64 uses the Intel PRO/1000.
-- First boot installs the **Guest Additions**, trusting Oracle's certificates first so the silent install doesn't stop at a prompt.
-
-## UTM
-
-UTM is QEMU underneath, so the QEMU backend gives the same result. To use UTM's interface instead:
-
-```bash
-winserver create srv01 --backend manual
-winserver iso srv01
-```
-
-In UTM: Create a New Virtual Machine → Virtualize (ARM64 ISO) or Emulate (x64 ISO) → Windows → **uncheck** "Install
-drivers and SPICE tools" and "Import VHDX" → Boot ISO image: the `srv01-unattended.iso` that `winserver iso` built.
-Pick at least 4 GB of RAM and a 64 GB disk. Before the first start, open the VM's settings and drag the disk
-above the CD drive in the Drives list, so the installer doesn't boot again after Setup's first reboot. Setup runs on its own. On ARM64 the virtio network driver is already on the
-disc. Connect with Remote Desktop to the IP that UTM shows.
+- Needs **Parallels Desktop Pro or Business**: in the Standard and App Store editions, `prlctl` may not create, start,
+  stop or query VMs ("available only in Parallels Desktop for Mac Pro or Business Edition"), so winserver can't
+  drive them. winserver says so and points to `winserver iso` instead.
+- Tested with the App Store edition 1.26.4 through the GUI and `winserver iso`: Windows installs unattended to the
+  desktop in about 7 minutes, but gets **no network**, because Parallels' virtio network card needs Parallels Tools,
+  which the GUI path doesn't attach. Not verified end to end, then; reports from Pro users welcome.
+- Open Parallels once (and sign in) so its service is running. Don't close the VM window during setup: the default
+  "suspend on close" loses the sandboxed app's access to the ISO.
 
 ## Anything else
 

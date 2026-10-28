@@ -36,9 +36,17 @@ be_parallels_require() {
 }
 
 be_parallels_create() {
-  local vm iso n=0
+  local vm iso n=0 out
   vm="$(prl_vm)"
-  prl_ create "$vm" --ostype windows --dst "$VM_DIR" --no-hdd >/dev/null || die "prlctl could not create $vm"
+  if ! out="$(prl_ create "$vm" --ostype windows --dst "$VM_DIR" --no-hdd 2>&1)"; then
+    case "$out" in
+      *"Pro or Business"*)
+        die "Parallels Desktop Standard and App Store editions don't let other programs create VMs (Pro and Business do).
+  Use the one-disc ISO instead:  winserver create $NAME --backend manual && winserver iso $NAME
+  then in Parallels: File > New > Install Windows from an image file, pick that ISO, untick Express installation." ;;
+      *) die "prlctl could not create $vm: $out" ;;
+    esac
+  fi
   prl_ set "$vm" --cpus "$CPUS" --memsize "$(size_to_mib "$MEMORY")" >/dev/null
   prl_ set "$vm" --device-add hdd --type expand --size "$(size_to_mib "$DISK_SIZE")" --iface nvme >/dev/null ||
     die "prlctl could not add the disk"

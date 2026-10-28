@@ -28,6 +28,9 @@ export WINSERVER_VBOXMANAGE="$T/stubs/VBoxManage"
 export WINSERVER_VBOX_APP="$T/apps/VirtualBox.app"
 export WINSERVER_PRLCTL="$T/stubs/prlctl"
 export WINSERVER_PARALLELS_APP="$T/apps/Parallels Desktop.app"
+export WINSERVER_UTM_APP="$T/apps/UTM.app"
+export WINSERVER_UTMCTL="$T/stubs/utmctl"
+export WINSERVER_OSASCRIPT="$T/stubs/osascript"
 
 pass=0
 fail=0
@@ -60,11 +63,11 @@ chmod +x "$WINSERVER_QEMU_DIR/qemu-img"
 for fw in edk2-aarch64-code.fd edk2-arm-vars.fd edk2-x86_64-code.fd edk2-i386-vars.fd; do
   : >"$WINSERVER_QEMU_SHARE/$fw"
 done
-for s in vmrun vmware-vdiskmanager VBoxManage prlctl; do
+for s in vmrun vmware-vdiskmanager VBoxManage prlctl utmctl osascript; do
   ln -s "$ROOT/tests/stub/hypervisor" "$T/stubs/$s"
 done
 mkdir -p "$WINSERVER_FUSION_APP/Contents/Library/isoimages/arm64" \
-  "$WINSERVER_VBOX_APP/Contents/MacOS" "$WINSERVER_PARALLELS_APP/Contents/Resources/Tools"
+  "$WINSERVER_VBOX_APP/Contents/MacOS" "$WINSERVER_PARALLELS_APP/Contents/Resources/Tools" "$WINSERVER_UTM_APP"
 : >"$WINSERVER_FUSION_APP/Contents/Library/isoimages/arm64/windows.iso"
 : >"$WINSERVER_VBOX_APP/Contents/MacOS/VBoxGuestAdditions.iso"
 : >"$WINSERVER_PARALLELS_APP/Contents/Resources/Tools/prl-tools-win-arm.iso"
@@ -195,6 +198,7 @@ check "QEMU VM gets a UTC clock"       contains "$CONF" "^RTC=utc"
 check "  ...and Windows is told so"    contains "$XML" "RealTimeIsUniversal /t REG_DWORD /d 1"
 check "Server keeps Server Manager off" contains "$XML" "SvrMgrNc"
 check "  ...and its hardware checks"   fails grep -q LabConfig "$XML"
+check "  ...and BitLocker alone"       fails grep -q PreventDeviceEncryption "$XML"
 check "ARM64 drivers on the disc"      contains "$T/out-web01-drivers" "NetKVM/netkvm.inf"
 check "x64 drivers not on the disc"    fails grep -q amd64 "$T/out-web01-drivers"
 PW="$(cat "$WINSERVER_HOME/vms/web01/password")"
@@ -220,6 +224,7 @@ payload_listed() {
   [ "$missing" = 0 ]
 }
 check "first boot copies all payload"  payload_listed
+check "lab VMs never sleep"            contains "$ROOT/templates/firstboot.ps1" "'standby-timeout-ac', 'hibernate-timeout-ac', 'monitor-timeout-ac'"
 check "no -Exclude copies in scripts"  fails grep -n -- "-Exclude" "$ROOT/templates/firstboot.ps1" "$ROOT/templates/post-setup.ps1"
 # Regression: Server 2025's own sshd rule is Private-only and VM networks are Public.
 check "sshd rule opened on all profiles" sh -c "grep -A2 'sshRule) {' '$ROOT/templates/post-setup.ps1' | grep -q 'Profile Any'"
@@ -276,6 +281,8 @@ check "TPM check skipped"              contains "$XML" 'LabConfig /v BypassTPMCh
 check "Secure Boot check skipped"      contains "$XML" 'LabConfig /v BypassSecureBootCheck'
 check "no local account screen"        contains "$XML" "<HideLocalAccountScreen>true</HideLocalAccountScreen>"
 check "no Server Manager setting"      fails grep -q SvrMgrNc "$XML"
+check "no automatic BitLocker"         contains "$XML" "BitLocker /v PreventDeviceEncryption /t REG_DWORD /d 1"
+check "  ...with the UTC clock, one component" sh -c "[ \"\$(grep -c 'Microsoft-Windows-Deployment' '$XML')\" = 1 ] && grep -q '<Order>2</Order>' '$XML'"
 check "--edition education"            sh -c "'$WS' create w11e --iso '$T/win11-arm64.iso' --edition education --no-start --no-ssh-key && grep -q '^IMAGE_INDEX=4' '$WINSERVER_HOME/vms/w11e/vm.conf'"
 check "your own --product-key wins"    sh -c "'$WS' create w11k --iso '$T/win11-arm64.iso' --product-key AAAAA-BBBBB-CCCCC-DDDDD-EEEEE --no-start --no-ssh-key && grep -q '^PRODUCT_KEY=AAAAA-BBBBB-CCCCC-DDDDD-EEEEE' '$WINSERVER_HOME/vms/w11k/vm.conf'"
 check "rejects Home"                   fails "$WS" create w11h --iso "$T/win11-arm64.iso" --edition home --no-start
@@ -378,7 +385,27 @@ check "Guest Additions attached"       contains "$VLOG" "--port 2 .*VBoxGuestAdd
 check "start / stop"                   sh -c "'$WS' start vb01 --headless && '$WS' list | grep -qE '^vb01 +virtualbox +arm64 +running' && '$WS' stop vb01 --force"
 check "delete unregisters"             sh -c "'$WS' delete vb01 --yes && grep -q 'unregistervm winserver-vb01 --delete' '$VLOG'"
 
+echo; echo "UTM backend"
+check "create on UTM"                  "$WS" create ut01 --backend utm --no-start --cpus 6 --memory 6G
+OLOG="$STUB_STATE/osascript.log"
+check "VM made by UTM's scripting"     contains "$OLOG" "utm-create.applescript winserver-ut01 aarch64 6144 6 true 65536 virtio-net-pci ramfb "
+check "  ...with the prompt-free ISO"  contains "$OLOG" "winserver-ut01 .*noprompt/winserver-arm64.* .*/vms/ut01/config.iso"
+check "  ...and its forwarded ports"   sh -c "grep 'winserver-ut01' '$OLOG' | grep -q \" \$(sed -n 's/^RDP_PORT=//p' '$WINSERVER_HOME/vms/ut01/vm.conf') \$(sed -n 's/^SSH_PORT=//p' '$WINSERVER_HOME/vms/ut01/vm.conf') \""
+check "UTC clock, Windows told so"     sh -c "grep -q '^RTC=utc' '$WINSERVER_HOME/vms/ut01/vm.conf' && grep -q RealTimeIsUniversal '$(config_file ut01 autounattend.xml)'"
+check "start"                          "$WS" start ut01 --headless
+check "  ...hidden, by name"           contains "$STUB_STATE/utmctl.log" "start --hide winserver-ut01"
+check "list shows it running"          sh -c "'$WS' list | grep -E '^ut01 +utm +arm64 +running'"
+check "stop asks Windows"              sh -c "'$WS' stop ut01 --timeout 10 && grep -q 'stop --request winserver-ut01' '$STUB_STATE/utmctl.log'"
+check "discs detached after install"   sh -c "sed -i '' 's/^INSTALLED=0/INSTALLED=1/' '$WINSERVER_HOME/vms/ut01/vm.conf' && '$WS' start ut01 --headless && grep -q 'utm-eject.applescript winserver-ut01' '$OLOG' && '$WS' stop ut01 --force"
+check "  ...--force powers off"        contains "$STUB_STATE/utmctl.log" "stop --force winserver-ut01"
+check "x64 on UTM: emulated"           sh -c "'$WS' create ut02 --backend utm --iso '$T/server-x64.iso' --no-start && grep -q 'winserver-ut02 x86_64 4096 4 false 65536 e1000e VGA' '$OLOG'"
+check "UTM chosen when QEMU is absent" sh -c "WINSERVER_QEMU_DIR='$T/no-qemu' '$WS' create ut03 --no-start --no-ssh-key && grep -q '^BACKEND=utm' '$WINSERVER_HOME/vms/ut03/vm.conf'"
+check "delete removes it from UTM"     sh -c "'$WS' delete ut01 --yes && grep -q 'delete winserver-ut01' '$STUB_STATE/utmctl.log'"
+
 echo; echo "Parallels backend"
+# Regression: Standard/App Store editions refuse `prlctl create`; say what to do, and leave no VM folder behind.
+check "Parallels Standard: clear advice" sh -c "STUB_PRL_STANDARD=1 '$WS' create pd00 --backend parallels --no-start 2>&1 | grep -q -- '--backend manual'"
+check "  ...and no half-made VM left"  test ! -e "$WINSERVER_HOME/vms/pd00"
 check "create on Parallels"            "$WS" create pd01 --backend parallels --no-start
 PLOG="$STUB_STATE/prlctl.log"
 check "VM created"                     contains "$PLOG" "create winserver-pd01 --ostype windows"

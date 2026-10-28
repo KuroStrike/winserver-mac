@@ -77,6 +77,7 @@ is_client() { case "${EDITION:-}" in pro|enterprise|education) return 0 ;; esac;
 # answer file, first-boot scripts, settings, drivers, SSH key, custom script.
 stage_config() {
   local stage="$1" arch_tag drivers="" key="" specialize="" setup="" oobe="" manager="" pw feature features=""
+  local commands=()
   pw="$(cat "$VM_DIR/password")"
   case "$ARCH" in arm64) arch_tag=arm64 ;; *) arch_tag=amd64 ;; esac
 
@@ -87,19 +88,31 @@ stage_config() {
   if [ -n "${PRODUCT_KEY:-}" ]; then
     key="        <ProductKey><Key>$(xml_escape "$PRODUCT_KEY")</Key><WillShowUI>OnError</WillShowUI></ProductKey>"
   fi
-  # Windows reads the hardware clock as local time unless told otherwise. Set in
-  # specialize, it is in effect from the reboot that follows.
+  # Commands for the specialize pass ("description|command"); they take effect
+  # from the reboot that follows.
+  # Windows reads the hardware clock as local time unless told otherwise.
   if [ "${RTC:-}" = utc ]; then
-    specialize="$(printf '%s\n' \
-      "    <component name=\"Microsoft-Windows-Deployment\" processorArchitecture=\"$arch_tag\" publicKeyToken=\"31bf3856ad364e35\" language=\"neutral\" versionScope=\"nonSxS\">" \
-      '      <RunSynchronous>' \
-      '        <RunSynchronousCommand wcm:action="add">' \
-      '          <Order>1</Order>' \
-      '          <Description>Hardware clock is UTC</Description>' \
-      '          <Path>reg.exe add HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation /v RealTimeIsUniversal /t REG_DWORD /d 1 /f</Path>' \
-      '        </RunSynchronousCommand>' \
-      '      </RunSynchronous>' \
-      '    </component>')"
+    commands+=('Hardware clock is UTC|reg.exe add HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation /v RealTimeIsUniversal /t REG_DWORD /d 1 /f')
+  fi
+  # Windows 11 turns on BitLocker device encryption by itself when the VM has a TPM.
+  if is_client; then
+    commands+=('No automatic BitLocker|reg.exe add HKLM\SYSTEM\CurrentControlSet\Control\BitLocker /v PreventDeviceEncryption /t REG_DWORD /d 1 /f')
+  fi
+  if [ "${#commands[@]}" -gt 0 ]; then
+    specialize="$(
+      printf '    <component name="Microsoft-Windows-Deployment" processorArchitecture="%s" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">\n' "$arch_tag"
+      printf '      <RunSynchronous>\n'
+      n=0
+      for c in "${commands[@]}"; do
+        n=$((n + 1))
+        printf '        <RunSynchronousCommand wcm:action="add">\n'
+        printf '          <Order>%s</Order>\n' "$n"
+        printf '          <Description>%s</Description>\n' "${c%%|*}"
+        printf '          <Path>%s</Path>\n' "${c#*|}"
+        printf '        </RunSynchronousCommand>\n'
+      done
+      printf '      </RunSynchronous>\n'
+      printf '    </component>')"
   fi
 
   if is_client; then

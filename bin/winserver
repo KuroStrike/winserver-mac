@@ -9,7 +9,7 @@
 # no ${var,,}, and empty arrays are expanded with ${a[@]+"${a[@]}"}.
 set -euo pipefail
 
-WINSERVER_VERSION="0.2.0"
+WINSERVER_VERSION="0.3.0"
 
 # Resolve the real location of this script, following symlinks
 # (Homebrew and `make install` link bin/winserver into a bin directory).
@@ -32,6 +32,8 @@ unset _self _dir
 . "$WINSERVER_ROOT/lib/iso.sh"
 # shellcheck source=lib/backends/qemu.sh
 . "$WINSERVER_ROOT/lib/backends/qemu.sh"
+# shellcheck source=lib/backends/utm.sh
+. "$WINSERVER_ROOT/lib/backends/utm.sh"
 # shellcheck source=lib/backends/vmware.sh
 . "$WINSERVER_ROOT/lib/backends/vmware.sh"
 # shellcheck source=lib/backends/parallels.sh

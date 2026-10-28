@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0 (2026-10-28)
+
+winserver is built around free and open-source hypervisors: QEMU, and now **UTM**, the open-source Mac app built on
+QEMU. VMware Fusion and Parallels Desktop stay as optional extras.
+
+- **UTM backend** (`--backend utm`, verified on a real install): the VM is created through UTM's scripting interface,
+  named `winserver-<name>`, driven with `utmctl`, and shows in UTM's window. ARM64 at native speed, x64 emulated.
+  RDP, SSH and WinRM forwarded on `127.0.0.1` like the QEMU backend, a UTC hardware clock with the answer file to
+  match, and the install and config discs detached at the first `start` after setup. Windows 11 ARM64 went from
+  `create` to RDP/SSH/WinRM in about 12 minutes, then through `stop`, `start`, `wait` and `ssh`.
+- Without `--backend`, winserver now picks QEMU, then UTM, then VirtualBox, VMware Fusion, Parallels. README and docs
+  lead with the open-source stack.
+- Windows 11: no automatic BitLocker device encryption (Windows turns it on by itself when the VM has a TPM).
+- Every VM: no sleep, hibernation or blank screen, so a lab VM stays reachable.
+- A failed `create` no longer leaves a half-made VM behind (it blocked trying again under the same name).
+- Parallels Desktop Standard and App Store editions: `create` explains that their `prlctl` can't create VMs (Pro and
+  Business can) and points to `winserver iso`. Tested through the GUI: Windows installs, but has no network without
+  Parallels Tools. Documented as not verified.
+
 ## 0.2.0 (2026-10-28)
 
 ARM64 proven on real installs with QEMU and VMware Fusion, and Windows 11 support, which made that possible: Microsoft

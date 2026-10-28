@@ -1,6 +1,6 @@
 # winserver-mac
 
-**Windows Server on Apple Silicon Macs, in the hypervisor you already use. One command, fully unattended.**
+**Windows Server on Apple Silicon Macs, with free and open-source tools. One command, fully unattended.**
 
 ```bash
 winserver fetch x64                            # official Windows Server 2025 evaluation ISO, from Microsoft
@@ -9,28 +9,28 @@ winserver wait dc01 && winserver rdp dc01      # when setup is done: Remote Desk
 ```
 
 "You can't run Windows Server on an M-series Mac" is *almost* true. Microsoft sells Windows Server for x64, and Apple
-Silicon hypervisors virtualize ARM. `winserver` handles everything that's still possible, end to end:
+Silicon hypervisors virtualize ARM. `winserver` handles everything that's still possible, end to end, on open-source
+software: [QEMU](https://www.qemu.org) and [UTM](https://mac.getutm.app), the free Mac app built on it.
 
-- **x64 Windows Server 2025** (official evaluation) under emulation with QEMU. Slow, but real, and it works today.
-- **ARM64 Windows Server** at native speed in **QEMU, VMware Fusion, Parallels or VirtualBox**, from Insider builds or your own media.
-- **Any other hypervisor** (UTM, Hyper-V, Proxmox, VMware Workstation, even a USB stick): `winserver iso` builds a single
-  ISO that installs everything with no clicks and no keypress.
-- **Windows 11** ISOs work too (Pro, Enterprise, Education): a client next to your lab servers, at native speed on ARM64.
+- **x64 Windows Server 2025** (official evaluation) under emulation. Slow, but real, and it works today.
+- **ARM64 Windows** at native speed: Windows Server from Insider builds or your own media, and Windows 11.
+- **Windows 11** ISOs work too (Pro, Enterprise, Education): a client next to your lab servers.
+- **Any other hypervisor** (UTM's window, Hyper-V, Proxmox, even a USB stick): `winserver iso` builds a single ISO that
+  installs everything with no clicks and no keypress.
 
-| On Apple Silicon | ARM64 Windows Server | x64 Windows Server |
-|---|---|---|
-| QEMU (free) | ✅ native speed | ✅ emulated, slow |
-| VMware Fusion (free for personal use) | ✅ native speed | ❌ impossible on Apple Silicon |
-| Parallels Desktop | ✅ native speed | ❌ |
-| VirtualBox 7.1+ | ✅ native (experimental in VirtualBox) | ❌ |
-| UTM and anything else | ✅ `winserver iso` | ✅ UTM (emulated) via `winserver iso` |
+| On Apple Silicon | ARM64 Windows | x64 Windows Server | Proven on a real install |
+|---|---|---|---|
+| **QEMU** (open source) | ✅ native speed | ✅ emulated, slow | ARM64, and x64 as server and DC |
+| **UTM** (open source, QEMU in a Mac app) | ✅ native speed | ✅ emulated, slow | ARM64 |
+| **VirtualBox 7.1+** (open-source core) | ✅ native (experimental in VirtualBox) | ❌ | not yet |
+| Anything else | ✅ `winserver iso` | ✅ `winserver iso` (emulated) | |
 
-On an Intel Mac, every backend runs x64 Windows Server at full speed. Details per hypervisor: [docs/HYPERVISORS.md](docs/HYPERVISORS.md).
+Also works, for people who already have them: **VMware Fusion** (proprietary, free for personal use; ARM64 proven) and
+**Parallels Desktop** Pro or Business (proprietary; its Standard and App Store editions can't be scripted). On an Intel
+Mac, every backend runs x64 at full speed. Details: [docs/HYPERVISORS.md](docs/HYPERVISORS.md).
 
-Proven on real installs so far (see [Status](#status)): x64 Windows Server with QEMU, as a plain server and as a domain
-controller, and ARM64 with **QEMU** and **VMware Fusion**, using Microsoft's Windows 11 ARM64 ISO since no ARM64 Server
-ISO can be downloaded today (same installer, answer file, drivers, guest tools and first boot). Parallels, VirtualBox and
-the rest of this table are implemented and covered by the automated tests, and wait for real-world reports.
+The ARM64 results come from Microsoft's Windows 11 ARM64 ISO, since no ARM64 Server ISO can be downloaded today: same
+installer, answer file, drivers and first boot (see [Status](#status)).
 
 > [!WARNING]
 > **ARM64 media, October 2026.** Microsoft publishes ARM64 Windows Server only as Insider Preview builds, and pulls them
@@ -60,7 +60,8 @@ Requirements: macOS 13+, [Homebrew](https://brew.sh), 8 GB+ RAM (16 GB recommend
 what your setup needs:
 
 ```bash
-brew install qemu                 # for the QEMU backend (skip it if you use VMware, Parallels or VirtualBox)
+brew install qemu                 # the QEMU backend (command line)
+brew install --cask utm           # and/or UTM, if you'd rather see your VMs in an app
 brew install aria2 cabextract     # only for 'winserver fetch arm64'
 ```
 
@@ -86,11 +87,11 @@ winserver wait srv01                    # ~22 min on an M4 Pro with 8 vCPUs
 winserver ssh srv01
 ```
 
-**ARM64 at native speed, in the hypervisor of your choice:**
+**ARM64 at native speed, in UTM's window:**
 
 ```bash
 winserver fetch arm64                   # when Microsoft serves an ARM64 build, or bring your own with --iso
-winserver create srv01 --backend vmware # or qemu, parallels, virtualbox
+winserver create srv01 --backend utm    # also: qemu, virtualbox (or vmware, parallels)
 winserver wait srv01
 winserver rdp srv01
 ```
@@ -152,7 +153,7 @@ Everything lives in `~/.winserver` (set `WINSERVER_HOME` to move it, e.g. to an 
    Setup with no keypress, in any hypervisor.
 3. **Config disc.** The editions inside the ISO are read with wimlib, and a small second disc carries `autounattend.xml`,
    the first-boot scripts, your SSH key and drivers. `winserver iso` merges all of it into a single disc instead.
-4. **VM.** The backend creates the VM in QEMU, VMware Fusion, Parallels or VirtualBox, with UEFI, an NVMe disk, and the
+4. **VM.** The backend creates the VM in QEMU, UTM, VirtualBox, VMware Fusion or Parallels, with UEFI, an NVMe disk, and the
    hypervisor's guest tools attached.
 5. **First boot.** A one-time logon installs drivers and guest tools, enables RDP, WinRM and ping, adds features,
    promotes the domain controller, runs your script, and starts OpenSSH last. When `winserver wait` sees an SSH
@@ -175,12 +176,18 @@ What has actually been verified (on an M4 Pro, macOS 26.7, October 2026):
 - [x] **ARM64 with QEMU 11.1 (HVF), end to end in ~14 minutes**, with Microsoft's Windows 11 ARM64 ISO: prompt-free
   boot, answer file, disc ejected at the first reboot, virtio drivers, network, then RDP (NLA), SSH (key and password)
   and WinRM from the Mac
+- [x] **ARM64 with UTM 5.0.8, end to end in ~12 minutes**, same ISO, through `--backend utm`: VM made through UTM's
+  scripting interface, prompt-free boot, the disk booting first after Setup's reboot, virtio network, then RDP (NLA),
+  SSH (key and password) and WinRM on `127.0.0.1`; then `stop`, `start` (install discs detached), `wait` and `ssh`,
+  with the clock right on Tokyo time
 - [x] **ARM64 with VMware Fusion 13.6.2, end to end in ~13 minutes**, same ISO: VMware Tools and the vmxnet3 driver
   installed on first boot, address found through Fusion's NAT, RDP, SSH and WinRM, then `stop`/`start`/`wait`/`ssh`
-- [x] Automated test suite: 168 checks covering every command and every backend, with fake ISOs and stub hypervisors,
+- [x] Automated test suite: 188 checks covering every command and every backend, with fake ISOs and stub hypervisors,
   plus shellcheck and PowerShell syntax checks. Runs in CI.
 - [ ] ARM64 **Windows Server** itself: no ARM64 Server ISO is downloadable right now (see the warning above)
-- [ ] Parallels and VirtualBox on real installs: next on the list. Reports welcome!
+- [ ] VirtualBox on a real install: next on the list. Reports welcome!
+- [ ] Parallels Desktop: tested with the App Store edition, which can't be scripted (Pro/Business only); through the
+  GUI, Windows installed unattended but had no network without Parallels Tools. Reports from Pro users welcome.
 
 Tried it? Please [open an issue](https://github.com/KuroStrike/winserver-mac/issues) with your Mac, macOS, hypervisor
 and what happened, whether it worked or not.
@@ -192,7 +199,7 @@ winserver builds labs, not production servers. What it does with credentials and
 - Every VM gets its own random Administrator password, kept on the Mac in `~/.winserver/vms/<name>/password`
   (readable by you only) and shown by `winserver password`. On a domain controller it is also the domain
   Administrator's and the Directory Services Restore Mode password.
-- QEMU and VirtualBox forward RDP, SSH and WinRM on `127.0.0.1` only; VMware and Parallels VMs sit on the
+- QEMU, UTM and VirtualBox forward RDP, SSH and WinRM on `127.0.0.1` only; VMware and Parallels VMs sit on the
   hypervisor's private NAT network. Nothing is exposed to your LAN unless you change that yourself. QEMU's VNC console
   (`--vnc`) also listens on `127.0.0.1` only, with its own password, which `winserver console` passes for you.
 - SSH accepts your Mac's key (`administrators_authorized_keys`) and the password. WinRM keeps Windows' defaults

@@ -62,6 +62,17 @@ On an M4 Pro with 8 vCPUs, an emulated Server Core install takes about 22 minute
 37. Fewer cores, a slower Mac or Desktop Experience can make it several times longer. `wait` gives up after 8 hours.
 Watch progress in the VM window or with `--vnc`. Use `--core`, give it `--cpus 6` or more, and close other heavy apps.
 
+## UTM: "not allowed to send Apple events to UTM"
+
+winserver creates UTM VMs through UTM's scripting interface. The first time, macOS asks whether your terminal app may
+control UTM: allow it. If you declined, turn it back on in System Settings > Privacy & Security > Automation, under
+your terminal app.
+
+## UTM: the VM can't find its install disc
+
+UTM keeps references to the ISOs, not copies. Leave `~/.winserver` (and the ISO you passed with `--iso`) where it was
+until `winserver wait` says setup is done; after that the discs are detached at the next `start`.
+
 ## VMware Fusion: `winserver wait` never sees the VM (0.1.x)
 
 VMware Tools for Windows on ARM don't report the guest's IP address to `vmrun`. Since 0.2.0, winserver reads it from

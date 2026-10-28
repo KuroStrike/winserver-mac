@@ -3,7 +3,7 @@
 # (rdp, ssh, console, password) and the doctor. Hypervisor specifics live in
 # lib/backends/<name>.sh; everything here goes through be().
 
-BACKENDS="qemu vmware parallels virtualbox manual"
+BACKENDS="qemu utm virtualbox vmware parallels manual"
 
 # Everything stored in vm.conf. load_vm/save_vm round-trip exactly these keys.
 VM_KEYS="NAME BACKEND ARCH ISO BOOT_ISO TOOLS_ISO IMAGE_INDEX EDITION EXPERIENCE CPUS MEMORY DISK_SIZE
@@ -64,11 +64,14 @@ ssh_banner() {
 }
 
 # Pick a backend for an architecture from what is installed.
+# Open-source hypervisors first: QEMU, then UTM (QEMU in a Mac app), which
+# both also emulate x64; then the ones that only run the Mac's architecture.
 choose_backend() {
   local arch="$1" b
   if [ -n "$(qemu_path "$arch")" ]; then echo qemu; return 0; fi
+  if be_utm_available; then echo utm; return 0; fi
   if [ "$arch" = arm64 ] || [ "$(host_arch)" = x86_64 ]; then
-    for b in vmware parallels virtualbox; do
+    for b in virtualbox vmware parallels; do
       if "be_${b}_available"; then echo "$b"; return 0; fi
     done
   fi
@@ -96,9 +99,9 @@ create_usage() {
 Usage: winserver create <name> [options]
 
 Hypervisor
-  --backend NAME         qemu, vmware, parallels, virtualbox or manual
-                         (default: QEMU if installed, else the first of VMware Fusion,
-                         Parallels, VirtualBox that is; 'manual' only prepares the discs)
+  --backend NAME         qemu, utm, virtualbox, vmware, parallels or manual
+                         (default: QEMU if installed, else UTM, else the first of VirtualBox,
+                         VMware Fusion, Parallels that is; 'manual' only prepares the discs)
 
 Media
   --iso FILE             Windows Server ISO (default: newest from 'winserver fetch'),
@@ -189,7 +192,7 @@ cmd_create() {
   need_name "$name"
   valid_vm_name "$name" || die "VM name must be 1-15 letters, digits or '-', and contain a letter (it becomes the Windows computer name)"
   [ ! -e "$VMS_DIR/$name" ] || die "a VM named '$name' already exists"
-  case "$backend" in ""|qemu|vmware|parallels|virtualbox|manual) ;; *) die "--backend must be one of: $BACKENDS" ;; esac
+  case " $BACKENDS " in *" ${backend:-qemu} "*) ;; *) die "--backend must be one of: $BACKENDS" ;; esac
   case "$arch" in ""|arm64|x64) ;; aarch64) arch=arm64 ;; amd64|x86_64) arch=x64 ;; *) die "--arch must be arm64 or x64" ;; esac
   case "$cpus" in ''|*[!0-9]*) die "--cpus must be a number" ;; esac
   size_to_mib "$memory" >/dev/null || die "--memory must look like 4G or 4096M"
@@ -312,14 +315,17 @@ or use --backend manual and 'winserver iso' to get media for any hypervisor."
   VM_DIR="$VMS_DIR/$name"
   mkdir -p "$VM_DIR" "$RUN_DIR"
   chmod 700 "$VM_DIR"
+  # Until the backend has made the VM, a failure leaves nothing behind.
+  trap 'rm -rf "$VM_DIR"' EXIT
   ISO="$iso"; IMAGE_INDEX="$index"
   EDITION="$edition"; EXPERIENCE="$experience"; CPUS="$cpus"; MEMORY="$memory"; DISK_SIZE="$disk"
   HOSTNAME_WIN="$hostname"; UI_LANG="$lang"; LOCALE="$locale"; KEYBOARD="$keyboard"; TIMEZONE="$timezone"
   PRODUCT_KEY="$key"; FEATURES="$features"; NIC="$nic"; MAC="$(gen_mac)"; CPU_MODEL="$cpu_model"
   if [ -n "$domain" ]; then ROLE=ad-dc; DOMAIN="$domain"; NETBIOS="$netbios"; fi
   # QEMU has no guest tools to set the clock: give it a UTC hardware clock, and
-  # the answer file tells Windows so. Other hypervisors' tools keep time.
-  if [ "$BACKEND" = qemu ]; then RTC=utc; fi
+  # the answer file tells Windows so (UTM keeps its clock in UTC already).
+  # Other hypervisors' tools keep time.
+  case "$BACKEND" in qemu|utm) RTC=utc ;; esac
   # Separate ranges, so the four ports of one VM can never collide with each other.
   RDP_PORT="$(find_free_port 33890)"
   SSH_PORT="$(find_free_port 22220)"
@@ -339,6 +345,7 @@ or use --backend manual and 'winserver iso' to get media for any hypervisor."
   build_config_iso
 
   if [ "$BACKEND" = manual ]; then
+    trap - EXIT
     ok "Media ready for $NAME."
     echo
     echo "  In any hypervisor, create a UEFI VM (Secure Boot off, 2+ vCPU, 4 GB RAM, 64 GB disk), then either:"
@@ -357,6 +364,7 @@ or use --backend manual and 'winserver iso' to get media for any hypervisor."
     save_vm
   fi
   be create
+  trap - EXIT
 
   ok "Created $NAME on $(be describe): $arch, $edition $experience (image $index), $cpus vCPU, $memory RAM, $disk disk"
   [ -z "$ROLE" ] || ok "Will become the first domain controller of $DOMAIN ($NETBIOS)"
@@ -670,7 +678,7 @@ cmd_doctor() {
       no_ "QEMU ($a guests)" "not found (brew install qemu)"; missing="$missing qemu"
     fi
   done
-  for b in vmware parallels virtualbox; do
+  for b in utm virtualbox vmware parallels; do
     if ! "be_${b}_available"; then
       dim "  - $b                 not installed"
     elif [ "$b" = parallels ] && ! prl_ list >/dev/null 2>&1; then
@@ -680,7 +688,7 @@ cmd_doctor() {
     fi
   done
   if [ "$(host_arch)" = arm64 ]; then
-    dim "  On Apple Silicon only QEMU runs x64 Windows (emulated); all of them run ARM64 Windows."
+    dim "  On Apple Silicon only QEMU and UTM run x64 Windows (emulated); all of them run ARM64 Windows."
   fi
 
   echo; echo "${C_BLD}Media tools${C_RST}"
