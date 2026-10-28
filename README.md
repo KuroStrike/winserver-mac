@@ -22,7 +22,7 @@ software: [QEMU](https://www.qemu.org) and [UTM](https://mac.getutm.app), the fr
 |---|---|---|---|
 | **QEMU** (open source) | ✅ native speed | ✅ emulated, slow | ARM64, and x64 as server and DC |
 | **UTM** (open source, QEMU in a Mac app) | ✅ native speed | ✅ emulated, slow | ARM64 |
-| **VirtualBox 7.1+** (open-source core) | ✅ native (experimental in VirtualBox) | ❌ | not yet |
+| **VirtualBox 7.1+** (open-source core) | ✅ native (experimental in VirtualBox) | ❌ | ARM64 |
 | Anything else | ✅ `winserver iso` | ✅ `winserver iso` (emulated) | |
 
 Also works, for people who already have them: **VMware Fusion** (proprietary, free for personal use; ARM64 proven) and
@@ -182,10 +182,13 @@ What has actually been verified (on an M4 Pro, macOS 26.7, October 2026):
   with the clock right on Tokyo time
 - [x] **ARM64 with VMware Fusion 13.6.2, end to end in ~13 minutes**, same ISO: VMware Tools and the vmxnet3 driver
   installed on first boot, address found through Fusion's NAT, RDP, SSH and WinRM, then `stop`/`start`/`wait`/`ssh`
-- [x] Automated test suite: 188 checks covering every command and every backend, with fake ISOs and stub hypervisors,
+- [x] Automated test suite: 196 checks covering every command and every backend, with fake ISOs and stub hypervisors,
   plus shellcheck and PowerShell syntax checks. Runs in CI.
 - [ ] ARM64 **Windows Server** itself: no ARM64 Server ISO is downloadable right now (see the warning above)
-- [ ] VirtualBox on a real install: next on the list. Reports welcome!
+- [x] **ARM64 with VirtualBox 7.2.22, end to end in ~18 minutes**, same ISO, through `--backend virtualbox`: disk on
+  SATA, Guest Additions installed and running, virtio network, then RDP (NLA), SSH (key and password) and WinRM on
+  `127.0.0.1`; `stop` through the Guest Additions in seconds, `start` (discs ejected), `wait`, `ssh`, `delete`,
+  with the clock right on Tokyo time
 - [ ] Parallels Desktop: tested with the App Store edition, which can't be scripted (Pro/Business only); through the
   GUI, Windows installed unattended but had no network without Parallels Tools. Reports from Pro users welcome.
 

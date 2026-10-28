@@ -322,10 +322,10 @@ or use --backend manual and 'winserver iso' to get media for any hypervisor."
   HOSTNAME_WIN="$hostname"; UI_LANG="$lang"; LOCALE="$locale"; KEYBOARD="$keyboard"; TIMEZONE="$timezone"
   PRODUCT_KEY="$key"; FEATURES="$features"; NIC="$nic"; MAC="$(gen_mac)"; CPU_MODEL="$cpu_model"
   if [ -n "$domain" ]; then ROLE=ad-dc; DOMAIN="$domain"; NETBIOS="$netbios"; fi
-  # QEMU has no guest tools to set the clock: give it a UTC hardware clock, and
-  # the answer file tells Windows so (UTM keeps its clock in UTC already).
-  # Other hypervisors' tools keep time.
-  case "$BACKEND" in qemu|utm) RTC=utc ;; esac
+  # A UTC hardware clock, and the answer file tells Windows so: QEMU has no guest
+  # tools to set the clock, UTM and VirtualBox keep theirs in UTC. VMware's and
+  # Parallels' tools keep time.
+  case "$BACKEND" in qemu|utm|virtualbox) RTC=utc ;; esac
   # Separate ranges, so the four ports of one VM can never collide with each other.
   RDP_PORT="$(find_free_port 33890)"
   SSH_PORT="$(find_free_port 22220)"

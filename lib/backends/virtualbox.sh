@@ -29,7 +29,7 @@ be_virtualbox_require() {
 }
 
 be_virtualbox_create() {
-  local vm ostype gfx nic port=0 iso
+  local vm ostype gfx nic port=1 iso
   local platform=()
   vm="$(vbox_vm)"
   if [ "$ARCH" = arm64 ]; then
@@ -40,18 +40,21 @@ be_virtualbox_create() {
   vbox_ createvm --name "$vm" --basefolder "$VM_DIR" --ostype "$ostype" ${platform[@]+"${platform[@]}"} --register >/dev/null ||
     die "VBoxManage could not create $vm"
   vbox_ modifyvm "$vm" --cpus "$CPUS" --memory "$(size_to_mib "$MEMORY")" --vram 64 \
-    --firmware efi --graphicscontroller "$gfx" --mouse usbtablet --usb-xhci on \
+    --firmware efi --rtc-use-utc on --graphicscontroller "$gfx" --mouse usbtablet --usb-xhci on --usb-ohci off \
     --boot1 disk --boot2 dvd --boot3 none --boot4 none --audio-enabled off \
     --nic1 nat --nic-type1 "$nic" --mac-address1 "$(printf '%s' "$MAC" | tr -d ':' | tr '[:lower:]' '[:upper:]')" \
     --nat-pf1 "rdp,tcp,127.0.0.1,$RDP_PORT,,3389" \
     --nat-pf1 "ssh,tcp,127.0.0.1,$SSH_PORT,,22" \
     --nat-pf1 "winrm,tcp,127.0.0.1,$WINRM_PORT,,5985" >/dev/null ||
     die "VBoxManage could not configure $vm"
-  vbox_ createmedium disk --filename "$VM_DIR/disk.vdi" --size "$(size_to_mib "$DISK_SIZE")" --format VDI >/dev/null ||
+  # (Its progress meter goes to stderr.)
+  vbox_ createmedium disk --filename "$VM_DIR/disk.vdi" --size "$(size_to_mib "$DISK_SIZE")" --format VDI >/dev/null 2>&1 ||
     die "VBoxManage could not create the disk"
-  vbox_ storagectl "$vm" --name NVMe --add pcie --controller NVMe >/dev/null
-  vbox_ storageattach "$vm" --storagectl NVMe --port 0 --device 0 --type hdd --medium "$VM_DIR/disk.vdi" >/dev/null
-  vbox_ storagectl "$vm" --name SATA --add sata --controller IntelAhci --portcount 3 >/dev/null
+  # One SATA controller, as VirtualBox itself sets up Windows 11 on ARM: with the
+  # disk on NVMe instead, Windows Setup on ARM stalls at "Searching for disks".
+  # Disk on port 0, the discs after it.
+  vbox_ storagectl "$vm" --name SATA --add sata --controller IntelAhci --portcount 4 >/dev/null
+  vbox_ storageattach "$vm" --storagectl SATA --port 0 --device 0 --type hdd --medium "$VM_DIR/disk.vdi" >/dev/null
   for iso in "$BOOT_ISO" "$VM_DIR/config.iso" "$TOOLS_ISO"; do
     [ -n "$iso" ] || continue
     vbox_ storageattach "$vm" --storagectl SATA --port "$port" --device 0 --type dvddrive --medium "$iso" >/dev/null ||
@@ -70,12 +73,19 @@ be_virtualbox_start() {
 }
 
 be_virtualbox_stop() {
-  if [ "$1" = 1 ]; then vbox_ controlvm "$(vbox_vm)" poweroff; else vbox_ controlvm "$(vbox_vm)" acpipowerbutton; fi >/dev/null 2>&1 || true
+  if [ "$1" = 1 ]; then
+    vbox_ controlvm "$(vbox_vm)" poweroff >/dev/null 2>&1 || true
+  else
+    # Through the Guest Additions: on ARM, Windows has no driver for the ACPI
+    # power button. Without the Additions, the button it is.
+    vbox_ controlvm "$(vbox_vm)" shutdown >/dev/null 2>&1 ||
+      vbox_ controlvm "$(vbox_vm)" acpipowerbutton >/dev/null 2>&1 || true
+  fi
 }
 
 be_virtualbox_eject() {
-  vbox_ storageattach "$(vbox_vm)" --storagectl SATA --port 0 --device 0 --type dvddrive --medium emptydrive >/dev/null 2>&1 || true
   vbox_ storageattach "$(vbox_vm)" --storagectl SATA --port 1 --device 0 --type dvddrive --medium emptydrive >/dev/null 2>&1 || true
+  vbox_ storageattach "$(vbox_vm)" --storagectl SATA --port 2 --device 0 --type dvddrive --medium emptydrive >/dev/null 2>&1 || true
 }
 
 be_virtualbox_destroy() { vbox_ unregistervm "$(vbox_vm)" --delete >/dev/null 2>&1 || true; }

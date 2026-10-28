@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.1 (2026-10-28)
+
+**VirtualBox verified on a real install**, after fixing what kept it from working on Apple Silicon. Windows 11 ARM64
+went from `create` to RDP, SSH and WinRM in about 18 minutes with VirtualBox 7.2.22, then through `stop`, `start`,
+`wait`, `ssh` and `delete`. All three open-source backends (QEMU, UTM, VirtualBox) are now proven on ARM64.
+
+- **VirtualBox on ARM: Windows Setup stalled at "Searching for disks"** with the disk on NVMe, then rebooted into the
+  installer again. The disk now sits on a SATA controller, ahead of the CD drives, as VirtualBox itself sets up
+  Windows 11 on ARM. The discs are ejected from their new ports after setup.
+- **VirtualBox on ARM: the Guest Additions were never installed.** VirtualBox calls itself `ORCL__ VBOXDSDT` there,
+  which first boot didn't recognize. It now does, and starts their service right away.
+- VirtualBox: `stop` asks Windows to shut down through the Guest Additions (2-8 seconds). On ARM, VirtualBox's ACPI
+  power button does nothing, so `stop` used to wait for the SSH fallback.
+- VirtualBox: a UTC hardware clock, with the answer file to match; no OHCI USB controller, which has no driver on
+  Windows on ARM; no progress meter leaking into `create`'s output.
+
 ## 0.3.0 (2026-10-28)
 
 winserver is built around free and open-source hypervisors: QEMU, and now **UTM**, the open-source Mac app built on

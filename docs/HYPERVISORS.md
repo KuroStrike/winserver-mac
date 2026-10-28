@@ -9,7 +9,7 @@ unattended ISO. VMware Fusion and Parallels Desktop work as optional extras for 
 |---|---|---|---|---|
 | **QEMU** (`--backend qemu`, GPL) | Native speed (HVF) | Emulated (TCG), slow but works | Native (HVF) | ARM64 and x64, server and DC |
 | **UTM** (`--backend utm`, Apache-2.0) | Native (Apple Hypervisor) | Emulated | Native | ARM64 |
-| **VirtualBox 7.1+** (`--backend virtualbox`, GPL core) | Native (experimental in VirtualBox) | Not possible | Native | not yet |
+| **VirtualBox 7.1+** (`--backend virtualbox`, GPL core) | Native (experimental in VirtualBox) | Not possible | Native | ARM64 |
 | **UTM's window, Hyper-V, Proxmox, bare metal…** | `winserver iso` | `winserver iso` (emulated) | `winserver iso` | |
 | VMware Fusion (`--backend vmware`, proprietary, free for personal use) | Native | Not possible | Native | ARM64 |
 | Parallels Desktop Pro/Business (`--backend parallels`, proprietary) | Native | Not supported | Native | no (see below) |
@@ -70,10 +70,16 @@ winserver create srv01 --backend utm    # chosen by default when QEMU itself isn
 winserver create srv01 --backend virtualbox
 ```
 
-- Needs VirtualBox 7.1 or later. ARM64 guests on Apple Silicon are still young in VirtualBox; report what you see.
-- UEFI, NVMe disk, AHCI CD drives, NAT with the same `127.0.0.1` port forwards as QEMU.
+- Needs VirtualBox 7.1 or later (verified with 7.2.22). ARM64 guests on Apple Silicon are still young in VirtualBox,
+  and a little slower to install than with QEMU or UTM.
+- UEFI, one SATA (AHCI) controller with the disk first and the CD drives after it, as VirtualBox itself sets up
+  Windows 11 on ARM. (With the disk on NVMe, Windows Setup on ARM stalls at "Searching for disks".)
+- NAT with the same `127.0.0.1` port forwards as QEMU; a UTC hardware clock, and the answer file tells Windows so.
 - ARM64 uses a virtio network card (driver from virtio-win on the config disc); x64 uses the Intel PRO/1000.
+  No OHCI USB controller (Windows on ARM has no driver for it); mouse and keyboard use xHCI.
 - First boot installs the **Guest Additions**, trusting Oracle's certificates first so the silent install doesn't stop at a prompt.
+- `stop` asks Windows to shut down through the Guest Additions (first boot starts their service right away): on ARM,
+  VirtualBox's ACPI power button shows in Device Manager as a resource conflict (`ACPI0011`) and does nothing.
 
 ## VMware Fusion (optional)
 

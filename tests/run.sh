@@ -380,9 +380,19 @@ check "ARM Windows OS type"            contains "$VLOG" "--ostype Windows11_arm6
 check "EFI firmware"                   contains "$VLOG" "--firmware efi"
 check "RDP forwarded to localhost"     contains "$VLOG" "rdp,tcp,127.0.0.1,"
 check "virtio NIC"                     contains "$VLOG" "--nic-type1 virtio"
-check "prompt-free ISO on port 0"      contains "$VLOG" "--port 0 --device 0 --type dvddrive --medium .*noprompt"
-check "Guest Additions attached"       contains "$VLOG" "--port 2 .*VBoxGuestAdditions.iso"
+# Regression: with the disk on NVMe, Windows Setup on ARM stalled at "Searching for disks".
+check "disk on SATA port 0"            contains "$VLOG" "storageattach winserver-vb01 --storagectl SATA --port 0 --device 0 --type hdd --medium .*disk.vdi"
+check "  ...not on NVMe"               fails grep -q "NVMe" "$VLOG"
+check "prompt-free ISO on port 1"      contains "$VLOG" "--port 1 --device 0 --type dvddrive --medium .*noprompt"
+check "Guest Additions attached"       contains "$VLOG" "--port 3 .*VBoxGuestAdditions.iso"
+check "UTC clock, Windows told so"     sh -c "grep -q -- '--rtc-use-utc on' '$VLOG' && grep -q RealTimeIsUniversal '$(config_file vb01 autounattend.xml)'"
+check "no OHCI controller (no driver on ARM)" contains "$VLOG" "--usb-ohci off"
+# Regression: on ARM, VirtualBox calls itself "ORCL__ VBOXDSDT", and first boot skipped the Guest Additions.
+check "first boot knows VirtualBox on ARM" contains "$ROOT/templates/firstboot.ps1" "'VirtualBox|innotek|ORCL'"
+check "  ...and starts the Additions"  contains "$ROOT/templates/firstboot.ps1" "Start-Service -Name VBoxService"
 check "start / stop"                   sh -c "'$WS' start vb01 --headless && '$WS' list | grep -qE '^vb01 +virtualbox +arm64 +running' && '$WS' stop vb01 --force"
+check "discs ejected from ports 1, 2"  sh -c "'$WS' start vb01 --headless >/dev/null && bash -c 'cd \"$ROOT\" && WINSERVER_ROOT=\"$ROOT\" . lib/common.sh && . lib/backends/virtualbox.sh && NAME=vb01 && be_virtualbox_eject' && grep -q 'storagectl SATA --port 1 --device 0 --type dvddrive --medium emptydrive' '$VLOG' && grep -q 'storagectl SATA --port 2 --device 0 --type dvddrive --medium emptydrive' '$VLOG' && '$WS' stop vb01 --force"
+check "stop asks the Guest Additions"  sh -c "'$WS' start vb01 --headless >/dev/null && '$WS' stop vb01 --timeout 10 && grep -q 'controlvm winserver-vb01 shutdown' '$VLOG'"
 check "delete unregisters"             sh -c "'$WS' delete vb01 --yes && grep -q 'unregistervm winserver-vb01 --delete' '$VLOG'"
 
 echo; echo "UTM backend"

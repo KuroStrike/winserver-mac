@@ -56,7 +56,7 @@ function Install-GuestTools {
             Start-Process -FilePath $agent -ArgumentList '/install_silent' -Wait
         }
     }
-    elseif ($platform -match 'VirtualBox|innotek') {
+    elseif ($platform -match 'VirtualBox|innotek|ORCL') {   # ARM64: "ORCL__ VBOXDSDT"
         $exe = $null
         if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $exe = Find-OnCd 'VBoxWindowsAdditions-arm64.exe' }
         if (-not $exe) { $exe = Find-OnCd 'VBoxWindowsAdditions.exe' }
@@ -71,6 +71,8 @@ function Install-GuestTools {
                 }
             }
             Start-Process -FilePath $exe -ArgumentList '/S' -Wait
+            # Otherwise it waits for a reboot, and `winserver stop` needs it.
+            Start-Service -Name VBoxService -ErrorAction SilentlyContinue
         }
     }
 }
