@@ -21,7 +21,7 @@ software: [QEMU](https://www.qemu.org) and [UTM](https://mac.getutm.app), the fr
 | On Apple Silicon | ARM64 Windows | x64 Windows Server | Proven on a real install |
 |---|---|---|---|
 | **QEMU** (open source) | ✅ native speed | ✅ emulated, slow | ARM64, and x64 as server and DC |
-| **UTM** (open source, QEMU in a Mac app) | ✅ native speed | ✅ emulated, slow | ARM64 |
+| **UTM** (open source, QEMU in a Mac app) | ✅ native speed | ✅ emulated, slow | ARM64, x64 |
 | **VirtualBox 7.1+** (open-source core) | ✅ native (experimental in VirtualBox) | ❌ | ARM64 |
 | Anything else | ✅ `winserver iso` | ✅ `winserver iso` (emulated) | |
 
@@ -185,6 +185,11 @@ What has actually been verified (on an M4 Pro, macOS 26.7, October 2026):
 - [x] Automated test suite: 196 checks covering every command and every backend, with fake ISOs and stub hypervisors,
   plus shellcheck and PowerShell syntax checks. Runs in CI.
 - [ ] ARM64 **Windows Server** itself: no ARM64 Server ISO is downloadable right now (see the warning above)
+- [x] **x64 Windows Server 2025 with UTM (emulated), end to end in ~27 minutes**: RDP (NLA), SSH, WinRM, then `stop`,
+  `start`, `wait`. Once, after a restart, PowerShell crashed inside Windows (`AccessViolationException`): emulated x64
+  on ARM can surface such errors. Not reproduced; prefer ARM64, or the QEMU backend, for x64 work.
+- [x] **Installed with Homebrew**, dependencies included (`brew install kurostrike/tap/winserver` in a fresh Homebrew
+  owned by the user): `doctor`, `brew test`, and the domain controller recipe with the bundled seed script
 - [x] **ARM64 with VirtualBox 7.2.22, end to end in ~18 minutes**, same ISO, through `--backend virtualbox`: disk on
   SATA, Guest Additions installed and running, virtio network, then RDP (NLA), SSH (key and password) and WinRM on
   `127.0.0.1`; `stop` through the Guest Additions in seconds, `start` (discs ejected), `wait`, `ssh`, `delete`,

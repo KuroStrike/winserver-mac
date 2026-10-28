@@ -53,13 +53,14 @@ be_utm_running() {
 }
 
 be_utm_start() {
-  local display="$1" hide=""
+  local display="$1" hide="" out
   if [ "$INSTALLED" = 1 ]; then
     # Like ejecting: the config disc holds the password, and setup is done.
     utm_osascript utm-eject.applescript "$(utm_vm)" >/dev/null 2>&1 || warn "could not detach the install discs in UTM"
   fi
   [ "$display" = headless ] && hide=--hide
-  utmctl_ start $hide "$(utm_vm)" >/dev/null || die "UTM could not start $(utm_vm)"
+  # (With --hide, utmctl prints "OSStatus error -10004" even when all is well.)
+  out="$(utmctl_ start $hide "$(utm_vm)" 2>&1)" || die "UTM could not start $(utm_vm): $out"
   ok "Running in UTM"
 }
 

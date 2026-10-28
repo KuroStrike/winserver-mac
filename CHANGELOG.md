@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2 (2026-10-28)
+
+- UTM: `start --headless` no longer shows utmctl's spurious "OSStatus error -10004" lines; a real failure still says
+  what UTM answered.
+- Verified: x64 Windows Server 2025 with UTM (emulated), about 27 minutes to RDP, SSH and WinRM, then `stop`, `start`,
+  `wait`. One PowerShell crash inside Windows after a restart (`AccessViolationException`), which emulated x64 on ARM
+  can cause; not reproduced.
+- Verified: `brew install kurostrike/tap/winserver` with all its dependencies in a fresh Homebrew, `brew test`, and the
+  domain controller recipe from the installed copy.
+
 ## 0.3.1 (2026-10-28)
 
 **VirtualBox verified on a real install**, after fixing what kept it from working on Apple Silicon. Windows 11 ARM64
